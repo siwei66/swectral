@@ -97,6 +97,7 @@ def _preprocessing_sample(
     process_chains: list,
     specpipe_report_directory: str,
     preprocess_status: dict,
+    num_type: Union[str, type],
     *,
     dump_result: Literal[True] = True,
     return_result_path: Literal[True] = True,
@@ -130,6 +131,7 @@ def _preprocessing_sample(
     process_chains: list,
     specpipe_report_directory: str,
     preprocess_status: dict,
+    num_type: Union[str, type],
     *,
     dump_result: Literal[True] = True,
     return_result_path: Literal[True] = True,
@@ -163,6 +165,7 @@ def _preprocessing_sample(
     process_chains: list,
     specpipe_report_directory: str,
     preprocess_status: dict,
+    num_type: Union[str, type],
     *,
     dump_result: Literal[True] = True,
     return_result_path: Literal[False] = False,
@@ -196,6 +199,7 @@ def _preprocessing_sample(
     process_chains: list,
     specpipe_report_directory: str,
     preprocess_status: dict,
+    num_type: Union[str, type],
     *,
     dump_result: Literal[True] = True,
     return_result_path: Literal[False] = False,
@@ -229,6 +233,7 @@ def _preprocessing_sample(
     process_chains: list,
     specpipe_report_directory: str,
     preprocess_status: dict,
+    num_type: Union[str, type],
     *,
     dump_result: Literal[False] = False,
     return_result_path: bool = True,
@@ -272,6 +277,7 @@ def _preprocessing_sample(  # noqa: C901
     process_chains: list,
     specpipe_report_directory: str,
     preprocess_status: dict,
+    num_type: Union[str, type],
     *,
     dump_result: bool = True,
     return_result_path: bool = True,
@@ -339,6 +345,9 @@ def _preprocessing_sample(  # noqa: C901
 
     update_progress_log : bool = False
         Whether to update progress log files, use to enable resume. The default is False.
+
+    num_type : str or type
+        Data type for array-like data storage, supports data types supported by numpy.
     """  # noqa: E501
     try:
         # Resume testing
@@ -442,6 +451,7 @@ def _preprocessing_sample(  # noqa: C901
             status_results=status_results,
             preprocess_status=preprocess_status,
             final_result_only=final_result_only,
+            num_type=num_type,
         )
 
         # Collect test preprocessing results of current chain (chain i)
@@ -538,6 +548,7 @@ def _chain_step_processor(  # noqa: C901
     status_results: list[list],  # empty data container
     preprocess_status: dict,
     final_result_only: bool,
+    num_type: Union[str, type],
     *,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
@@ -622,6 +633,7 @@ def _chain_step_processor(  # noqa: C901
                         status_results=status_results,
                         calc_status=calc_status,
                         preprocess_status=preprocess_status,
+                        num_type=num_type,
                     )
                 except Exception as e:
                     method_item_tuple = tuple(method_item)
@@ -661,15 +673,16 @@ def _chain_step_processor(  # noqa: C901
     return status_results
 
 
-def _dump_disk_backed_data(num_result: object, data_path: str) -> dict:
+def _dump_disk_backed_data(num_result: object, data_path: str, num_type: Union[str, type] = np.float32) -> dict:
     """Dump disk backed data according to given path and return the handle. data_path must have no extension."""
     data_path = os.path.splitext(data_path)[0]
     # Dump to npy if array-like
     try:
         num_result = arraylike_validator()(num_result)
+        assert isinstance(num_result, np.ndarray)
+        num_result = num_result.astype(num_type)
         data_path_ext = unc_path(data_path + ".npy")
         loader_type = "numpy"
-        assert isinstance(num_result, np.ndarray)
         np.save(data_path_ext, num_result)
     # Else to dill
     except Exception:
@@ -714,6 +727,7 @@ def _single_process_handler(
     status_results: list[list],
     calc_status: list[list],
     preprocess_status: dict,
+    num_type: Union[str, type],
     *,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
@@ -749,7 +763,7 @@ def _single_process_handler(
         num_result = method_func(step_input_data, roi_coords)
         # Dump result
         data_path = f"{inter_sdir}Sample_{sample_data_label}_step_{stepi}_chain_{chain_ind}"
-        result_data_handle = _dump_disk_backed_data(num_result=num_result, data_path=data_path)
+        result_data_handle = _dump_disk_backed_data(num_result=num_result, data_path=data_path, num_type=num_type)
         # Store handle
         chain_result.append(result_data_handle)
     # ============ Extracted data / Sample data processing ============
@@ -760,7 +774,7 @@ def _single_process_handler(
         num_result = method_func(step_input_data_loaded)
         # Dump result
         data_path = f"{inter_sdir}Sample_{sample_data_label}_step_{stepi}_chain_{chain_ind}"
-        result_data_handle = _dump_disk_backed_data(num_result=num_result, data_path=data_path)
+        result_data_handle = _dump_disk_backed_data(num_result=num_result, data_path=data_path, num_type=num_type)
         # Store handle
         chain_result.append(result_data_handle)
     # Save calculated step results
@@ -1160,7 +1174,7 @@ def _model_evaluator(  # noqa: C901
         else:
             raise ValueError(f"Model only accepts data level 'spec1d' as input, but got: {dl_in_name}")
 
-    # TODO: Update progress
+    # Update progress
     log_path = model_report_dir + "modeling_progress_log.dill"
     assert hasattr(lock, "__enter__") and hasattr(lock, "__exit__")
     with lock:

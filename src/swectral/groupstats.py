@@ -378,6 +378,8 @@ def process_label_to_id(process_label: str, pipeline_config_dir: str) -> str:
 
 
 # %% Model performance summary and marginal performance statistics
+
+
 # Collect performance metrics
 def performance_metrics_summary(  # noqa: C901
     pipeline_config_dir: str,
@@ -430,7 +432,7 @@ def performance_metrics_summary(  # noqa: C901
         raise ValueError(f"No preprocessing chain information found in the given report path: {report_dir}")
 
     # Read chain content
-    result_chains = []
+    result_chains_dir_map: dict = {}
     for dir_name in dir_names:
         dn_split = dir_name.replace("Data_chain_Preprocessing_#", "##split#block##").replace(
             "_Model_", "##split#block##"
@@ -450,33 +452,42 @@ def performance_metrics_summary(  # noqa: C901
         model_name = dn_splited[2]
         # Get chain number
         chain_num = dn_splited[1]
-        chain_txt_found = [txt_name for txt_name in chain_txt_names if f"Preprocessing_#{chain_num}" in txt_name]
+        chain_txt_found = [txt_name for txt_name in chain_txt_names if f"Preprocessing_#{chain_num}.txt" == txt_name]
         if len(chain_txt_found) == 1:
             chain_txt = chain_txt_found[0]
         else:
             raise ValueError(
                 f"None or multiple preprocessing chain file found for 'Preprocessing_#{chain_num}', \
-                    got: {chain_txt}"
+                    got chain file names: {chain_txt_names}"
             )
         # Get preprocessing chain
         with open(unc_path(report_dir + chain_txt), "r", encoding="utf-8") as f:
             steps_list: list = [line.strip() for line in f.readlines()]
         steps: tuple = tuple(steps_list + [model_name])
         # Add to full chain
-        result_chains.append(steps)
+        result_chains_dir_map[steps] = dir_name
 
     # Validate results and configuration consistency
-    if set(config_chains) != set(result_chains):
+    if set(config_chains) != set(result_chains_dir_map.keys()):
         raise ValueError(
             f"Pipeline model evaluation reports imply inconsistent processing chains with pipeline configurations:\n\
-            Configured chains:\n{config_chains},\nReport implied chains:\n{result_chains}\n"
+            Configured chains:\n{config_chains},\nReport implied chains:\n{result_chains_dir_map.keys()}\n"
         )
+
+    # Reorder chains to match configuration
+    ordered_result_chains = []
+    ordered_dir_names = []
+    for chain in config_chains:
+        if chain not in result_chains_dir_map:
+            raise ValueError(f"Configured chain {chain} not found in report directories")
+        ordered_result_chains.append(chain)
+        ordered_dir_names.append(result_chains_dir_map[chain])
 
     # Get chain model performance metrics
     metrics_micro = []
     metrics_macro = []
     metrics_reg = []
-    for dir_name, result_chain in zip(dir_names, result_chains):
+    for dir_name, result_chain in zip(ordered_dir_names, ordered_result_chains):
         # Validate result chain - all item to process IDs
         result_chain1 = []
         for proc_item in result_chain:

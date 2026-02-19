@@ -3046,6 +3046,7 @@ class SpecPipe:
         dump_result: bool = True,
         dump_backup: bool = False,
         save_preprocessed_images: bool = False,
+        num_type: Union[str, type] = np.float32,
     ) -> Optional[dict]:
         """
         Run the pipeline of all processing chains using simplified test data.
@@ -3076,6 +3077,10 @@ class SpecPipe:
         dump_backup : bool, optional
             Whether backup of the step results is stored.
             The backup file is named with the datetime of dumping.
+
+        num_type: str or type, optional
+            Numeric data type for array-like data storage, supporting numeric ``numpy`` data types.
+            Default is ``numpy.float32``.
 
         Returns
         -------
@@ -3115,6 +3120,7 @@ class SpecPipe:
             process_chains=self.process_chains,
             specpipe_report_directory=self.spec_exp.report_directory,
             preprocess_status=self._init_preprocessing_status(n_processor=1),
+            num_type=num_type,
             dump_result=dump_result,
             return_result_path=False,
             dump_backup=dump_backup,
@@ -3338,6 +3344,7 @@ class SpecPipe:
         self,
         result_directory: str = "",
         n_processor: int = 1,
+        num_type: Union[str, type] = np.float32,
         dump_backup: bool = False,
         step_result: bool = True,
         resume: bool = False,
@@ -3366,6 +3373,10 @@ class SpecPipe:
             Windows note: when using ``n_processor > 1`` on Windows, all excecutable code in the working script must be placed within::
 
                 if __name__ == '__main__':
+
+        num_type: str or type, optional
+            Numeric data type for array-like data storage, supporting numeric ``numpy`` data types.
+            Default is ``numpy.float32``.
 
         dump_backup : bool, optional
             Create backup files of results with timestamp. Default is False.
@@ -3503,6 +3514,7 @@ class SpecPipe:
             final_result_only=final_result_only,
             resume=resume,
             show_progress=show_progress,
+            num_type=num_type,
         )
 
         # Complete preprocessing progress monitoring
@@ -3545,6 +3557,7 @@ class SpecPipe:
         final_result_only: bool = True,
         resume: bool = False,
         show_progress: bool = True,
+        num_type: Union[str, type] = np.float32,
         *,
         # Dependencies for multiprocessing
         copy: ModuleType = copy,
@@ -3634,6 +3647,7 @@ class SpecPipe:
                     dump_directory=step_dir,
                     update_progress_log=True,
                     preprocess_status=preprocess_status,
+                    num_type=num_type,
                 )
                 self.__preprocess_result_path.append(pti)
 
@@ -3662,6 +3676,7 @@ class SpecPipe:
                 dump_directory=step_dir,
                 update_progress_log=True,
                 preprocess_status=preprocess_status,
+                num_type=num_type,
                 # Explicitly assign dependencies for multiprocessing
                 copy=copy,
                 os=os,
@@ -4167,6 +4182,7 @@ class SpecPipe:
         self,
         result_directory: str = "",
         n_processor: int = -1,
+        num_type: Union[str, type] = np.float32,
         test_model: bool = True,
         model_parallel: bool = True,
         dump_backup: bool = False,
@@ -4201,6 +4217,10 @@ class SpecPipe:
             Windows note: when using ``n_processor > 1`` or ``n_processor = -2`` on Windows, all excecutable code in the working script must be placed within::
 
                 if __name__ == '__main__':
+
+        num_type: str or type, optional
+            Numeric data type for array-like data storage, supporting numeric ``numpy`` data types.
+            Default is ``numpy.float32``.
 
         test_model : bool, optional
             Whether to test added models before formal execution.
@@ -4337,6 +4357,7 @@ class SpecPipe:
         self.preprocessing(
             result_directory=result_directory,
             n_processor=n_processor,
+            num_type=num_type,
             dump_backup=dump_backup,
             step_result=step_result,
             resume=resume,

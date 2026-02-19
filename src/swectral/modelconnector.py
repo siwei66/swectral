@@ -905,7 +905,7 @@ def _convert_metrics_combined_model(metrics_dict: dict, modeleva_report_dir: str
         )
         with open(chain_process_info_path, 'rb') as f:
             chain_process_info = dill.load(f)
-        combined_model_info_path = unc_path(path + "/.__swectral_dill_data/.__swectral_combined_model_info.dill")
+        combined_model_info_path = unc_path(path + "/.__swectral_dill_data/.__swectral_Combined_model_info.dill")
         if os.path.exists(combined_model_info_path):
             with open(combined_model_info_path, 'rb') as f:
                 combined_model_info = dill.load(f)
