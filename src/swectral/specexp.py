@@ -3628,8 +3628,7 @@ class SpecExp:
     def _update_sspecs_file(self, silent_run: bool = False, save_backup: bool = True) -> None:
         # Validate output directory
         wpath = self._report_directory + "Standalone_spectral_data/"
-        if not os.path.exists(unc_path(wpath)):
-            os.makedirs(unc_path(wpath))
+        os.makedirs(unc_path(wpath), exist_ok=True)
 
         # Result to dataframes
         df_sspecs = pd.DataFrame(

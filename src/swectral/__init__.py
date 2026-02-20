@@ -5,7 +5,7 @@ A Python framework for automated batch composition, implementation and method as
 """  # noqa: E501
 
 # Package meta
-__version__ = "0.5.6"
+__version__ = "0.5.7"
 __author__ = "Siwei Luo"
 __license__ = "MIT"
 

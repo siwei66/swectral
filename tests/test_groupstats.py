@@ -283,23 +283,24 @@ class TestGroupStats(unittest.TestCase):
     def test_chain_process_id_label_conversion(self) -> None:
         """Test 'process_id_to_label' and 'process_label_to_id' functionality."""
         config_dir = self.test_dir + "SpecPipe_configuration/"
+        process_config_df = pd.read_csv(config_dir + "SpecPipe_added_process.csv")
         chain_proc_id, chain_proc_lab = self.spec_pipe_reg.ls_chains(print_label=False, return_label=True)
         for r in range(chain_proc_id.shape[0]):
             for c in range(chain_proc_id.shape[1]):
                 cpid = chain_proc_id.iloc[r, c]
                 cplab = chain_proc_lab.iloc[r, c]
                 # process_id_to_label
-                assert process_id_to_label(cpid, config_dir) == cplab
+                assert process_id_to_label(cpid, process_config_df) == cplab
                 # process_label_to_id
-                assert process_label_to_id(cplab, config_dir) == cpid
+                assert process_label_to_id(cplab, process_config_df) == cpid
 
         # No item matched
         # process_id_to_label
         with pytest.raises(ValueError, match="No label found"):
-            process_id_to_label("non_existed_id", config_dir)
+            process_id_to_label("non_existed_id", process_config_df)
         # process_label_to_id
         with pytest.raises(ValueError, match="No process ID found"):
-            process_label_to_id("non_existed_label", config_dir)
+            process_label_to_id("non_existed_label", process_config_df)
 
     @silent
     def test_performance_metrics_summary(self) -> None:
@@ -525,7 +526,7 @@ class TestGroupStats(unittest.TestCase):
 
 # test_groupstats = TestGroupStats()
 
-# test_groupstats.setUp()
+# test_groupstats.setUpClass()
 
 # test_groupstats.test_chain_sample_group_stats()
 # test_groupstats.test_sample_group_stats()
@@ -534,7 +535,7 @@ class TestGroupStats(unittest.TestCase):
 # test_groupstats.test_performance_marginal_stats_for_regression()
 # test_groupstats.test_performance_marginal_stats_for_classification()
 
-# test_groupstats.tearDown()
+# test_groupstats.tearDownClass()
 
 
 # %% Test main

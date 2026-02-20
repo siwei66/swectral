@@ -177,8 +177,7 @@ def chain_sample_group_stats(  # noqa: C901
         )
         # Dump y stats dill (swectral private)
         dill_result_path = write_dir + ".__swectral_dill_data/.__swectral_result_summary_sample_targets_stats.dill"
-        if not os.path.exists(unc_path(os.path.dirname(dill_result_path))):
-            os.makedirs(unc_path(os.path.dirname(dill_result_path)))
+        os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
         dill.dump(df_ystats, open(unc_path(dill_result_path), "wb"))
         # Save X stats
         for m in list(gstats.keys()):
@@ -238,8 +237,7 @@ def chain_sample_group_stats(  # noqa: C901
         )
         # Dump y stats dill (swectral private)
         dill_result_path = write_dir + ".__swectral_dill_data/.__swectral_result_summary_sample_targets_stats.dill"
-        if not os.path.exists(unc_path(os.path.dirname(dill_result_path))):
-            os.makedirs(unc_path(os.path.dirname(dill_result_path)))
+        os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
         dill.dump(df_ystats, open(unc_path(dill_result_path), "wb"))
 
         # Save X stats
@@ -328,12 +326,14 @@ def sample_group_stats(  # noqa: C901
 # %% Process ID label converters
 
 
-def process_id_to_label(process_id: str, pipeline_config_dir: str, ignore: bool = False) -> str:
+def process_id_to_label(process_id: str, process_config_df: pd.DataFrame, ignore: bool = False) -> str:
     """
     Convert unique SpecPipe process ID to process label. If ignore True, return input if input is not id.
+    "process_config_df" is the SpecPipe_added_process.csv in the configuration subdir.
     """
-    config_dir = (pipeline_config_dir + "/").replace("//", "/")
-    df_proc = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    # config_dir = (pipeline_config_dir + "/").replace("//", "/")
+    # df_proc = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    df_proc = process_config_df
     process_labels = list(df_proc["Method"][df_proc["ID"] == process_id])
     if not ignore:
         if len(process_labels) < 1:
@@ -346,9 +346,10 @@ def process_id_to_label(process_id: str, pipeline_config_dir: str, ignore: bool 
             return str(process_labels[0])
 
 
-def process_label_to_id(process_label: str, pipeline_config_dir: str) -> str:
+def process_label_to_id(process_label: str, process_config_df: pd.DataFrame) -> str:
     """
     Convert unique SpecPipe process label to process ID.
+    "process_config_df" is the SpecPipe_added_process.csv in the configuration subdir.
     """
     # Validate if ID
     if "_%#" in process_label:
@@ -364,8 +365,9 @@ def process_label_to_id(process_label: str, pipeline_config_dir: str) -> str:
         except Exception:
             pass
     # Convert label to ID
-    config_dir = (pipeline_config_dir + "/").replace("//", "/")
-    df_proc = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    # config_dir = (pipeline_config_dir + "/").replace("//", "/")
+    # df_proc = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    df_proc = process_config_df
     process_ids = list(df_proc["ID"][df_proc["Method"] == process_label])
     if len(process_ids) > 1:
         raise ValueError(
@@ -390,6 +392,7 @@ def performance_metrics_summary(  # noqa: C901
     """
     config_dir = (pipeline_config_dir.replace("\\", "/") + "/").replace("//", "/")
     report_dir = (model_evaluation_report_dir.replace("\\", "/") + "/").replace("//", "/")
+    process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Chains path
     chains_id_path = config_dir + "SpecPipe_exec_chains_in_ID.csv"
@@ -491,18 +494,17 @@ def performance_metrics_summary(  # noqa: C901
         # Validate result chain - all item to process IDs
         result_chain1 = []
         for proc_item in result_chain:
-            result_chain1.append(process_label_to_id(proc_item, config_dir))
+            result_chain1.append(process_label_to_id(proc_item, process_config_df))
         result_chain = tuple(result_chain1)
         # Metrics directory
         metrics_dir = f"{report_dir}{dir_name}/"
         # Save processes of the full chain
         cprocs_in_id = result_chain1
-        cprocs_in_label = [process_id_to_label(proc_id, config_dir) for proc_id in cprocs_in_id]
+        cprocs_in_label = [process_id_to_label(proc_id, process_config_df) for proc_id in cprocs_in_id]
         df_cprocs = pd.DataFrame({"Chain_in_process_ID": cprocs_in_id, "Chain_in_process_label": cprocs_in_label})
         # Dump dill (swectral private)
         dill_result_path = metrics_dir + ".__swectral_dill_data/.__swectral_core_result_Chain_process_info.dill"
-        if not os.path.exists(unc_path(os.path.dirname(dill_result_path))):
-            os.makedirs(unc_path(os.path.dirname(dill_result_path)))
+        os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
         dill.dump(df_cprocs, open(unc_path(dill_result_path), "wb"))
         # Read performance metrics
         metrics_filename = [
@@ -609,6 +611,7 @@ def regression_performance_marginal_stats(
     df_cid = metrics_dict["chains_in_ID"]
     df_reg_metrics = metrics_dict["regression_metrics"]
     config_dir = pipeline_config_dir
+    process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Compute and output marginal perf stats of each step
     marginal_performance_stats: dict = {}
@@ -634,7 +637,7 @@ def regression_performance_marginal_stats(
             "All",
         ] + step_process_ids
         step_gstats_r2.loc[0, :] = ["Process_label", "All"] + [
-            process_id_to_label(proc_id, config_dir, ignore=(not validate_process))
+            process_id_to_label(proc_id, process_config_df, ignore=(not validate_process))
             for proc_id in step_gstats_r2.columns[2:]
         ]
         # Aggregate group of all records
@@ -671,16 +674,14 @@ def regression_performance_marginal_stats(
                 report_dir
                 + f".__swectral_dill_data/.__swectral_result_summary_Marginal_R2_stats_{str(step).lower()}.dill"
             )
-            if not os.path.exists(unc_path(os.path.dirname(dill_result_path))):
-                os.makedirs(unc_path(os.path.dirname(dill_result_path)))
+            os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
             dill.dump(step_gstats_r2, open(unc_path(dill_result_path), "wb"))
 
     # Save summary results used
     df_reg_metrics.to_csv(unc_path(report_dir + "Performance_summary.csv"), index=False)
     # Dump dill (swectral private)
     dill_result_path = report_dir + ".__swectral_dill_data/.__swectral_result_summary_Performance_summary.dill"
-    if not os.path.exists(unc_path(os.path.dirname(dill_result_path))):
-        os.makedirs(unc_path(os.path.dirname(dill_result_path)))
+    os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
     dill.dump(df_reg_metrics, open(unc_path(dill_result_path), "wb"))
 
     return marginal_performance_stats
@@ -706,6 +707,7 @@ def classification_performance_marginal_stats(  # noqa: C901
     df_macro_metrics = metrics_dict["macro_metrics"]
     df_micro_metrics = metrics_dict["micro_metrics"]
     config_dir = pipeline_config_dir
+    process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Compute and output marginal perf stats of each step
     marginal_performance_stats: dict = {}
@@ -732,7 +734,7 @@ def classification_performance_marginal_stats(  # noqa: C901
             "All",
         ] + step_process_ids
         step_gstats_macauc.loc[0, :] = ["Process_label", "All"] + [
-            process_id_to_label(proc_id, config_dir, ignore=(not validate_process))
+            process_id_to_label(proc_id, process_config_df, ignore=(not validate_process))
             for proc_id in step_gstats_macauc.columns[2:]
         ]
         step_gstats_micauc = step_gstats_macauc.copy(deep=True)
@@ -794,8 +796,7 @@ def classification_performance_marginal_stats(  # noqa: C901
                 + ".__swectral_dill_data/"
                 + f".__swectral_result_summary_Marginal_macro_avg_AUC_stats_{str(step).lower()}.dill"
             )  # noqa: E501
-            if not os.path.exists(os.path.dirname(dill_result_path)):
-                os.makedirs(os.path.dirname(dill_result_path))
+            os.makedirs(os.path.dirname(dill_result_path), exist_ok=True)
             dill.dump(step_gstats_macauc, open(dill_result_path, "wb"))
             # Save micro-avg AUC
             step_gstats_micauc.to_csv(
@@ -807,8 +808,7 @@ def classification_performance_marginal_stats(  # noqa: C901
                 + ".__swectral_dill_data/"
                 + f".__swectral_result_summary_Marginal_micro_avg_AUC_stats_{str(step).lower()}.dill"
             )  # noqa: E501
-            if not os.path.exists(os.path.dirname(dill_result_path)):
-                os.makedirs(os.path.dirname(dill_result_path))
+            os.makedirs(os.path.dirname(dill_result_path), exist_ok=True)
             dill.dump(step_gstats_micauc, open(dill_result_path, "wb"))
 
     # Collect performance summary
@@ -821,8 +821,7 @@ def classification_performance_marginal_stats(  # noqa: C901
     dill_result_path = unc_path(
         report_dir + ".__swectral_dill_data/.__swectral_result_summary_Macro_avg_performance_summary.dill"
     )
-    if not os.path.exists(os.path.dirname(dill_result_path)):
-        os.makedirs(os.path.dirname(dill_result_path))
+    os.makedirs(os.path.dirname(dill_result_path), exist_ok=True)
     dill.dump(df_macro_metrics, open(dill_result_path, "wb"))
     # Save micro-avg performance
     df_micro_metrics.to_csv(unc_path(report_dir + "Micro_avg_performance_summary.csv"), index=False)
@@ -830,8 +829,7 @@ def classification_performance_marginal_stats(  # noqa: C901
     dill_result_path = unc_path(
         report_dir + ".__swectral_dill_data/.__swectral_result_summary_Micro_avg_performance_summary.dill"
     )
-    if not os.path.exists(os.path.dirname(dill_result_path)):
-        os.makedirs(os.path.dirname(dill_result_path))
+    os.makedirs(os.path.dirname(dill_result_path), exist_ok=True)
     dill.dump(df_micro_metrics, open(dill_result_path, "wb"))
 
     return marginal_performance_stats

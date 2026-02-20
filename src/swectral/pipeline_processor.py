@@ -418,8 +418,7 @@ def _preprocessing_sample(  # noqa: C901
         # Test run
         else:
             preprocessed_img_dir = specpipe_report_directory + "test_run/Preprocessed_images/"
-            if not os.path.exists(unc_path(preprocessed_img_dir)):
-                os.makedirs(unc_path(preprocessed_img_dir))
+            os.makedirs(unc_path(preprocessed_img_dir), exist_ok=True)
 
         # Validate step result data dir
         if is_test_run:
@@ -431,12 +430,10 @@ def _preprocessing_sample(  # noqa: C901
             sdir = dump_directory
         else:
             sdir = specpipe_report_directory + f"{dir_name}/Step_results/"
-        if not os.path.exists(unc_path(sdir)):
-            os.makedirs(unc_path(sdir))
+        os.makedirs(unc_path(sdir), exist_ok=True)
         # Intermediate step_results dir path
         inter_sdir = sdir + "Intermediate_step_results/"
-        if not os.path.exists(unc_path(inter_sdir)):
-            os.makedirs(unc_path(inter_sdir))
+        os.makedirs(unc_path(inter_sdir), exist_ok=True)
 
         # Implement processing pipeline for every chain of chains
         status_results = _chain_step_processor(
@@ -480,11 +477,12 @@ def _preprocessing_sample(  # noqa: C901
         log_dir_path = step_dir + "Preprocess_progress_logs/"
         log_fp = log_dir_path + sample_data["ID"]
         if update_progress_log:
-            if not os.path.exists(unc_path(log_dir_path)):
-                os.makedirs(unc_path(log_dir_path))
-            if not os.path.exists(unc_path(log_fp)):
-                with open(unc_path(log_fp), "w") as f:
+            os.makedirs(unc_path(log_dir_path), exist_ok=True)
+            try:
+                with open(unc_path(log_fp), "x") as f:  # Write if not exist
                     f.write("")
+            except FileExistsError:
+                pass
 
         # Return result file path and step results if required
         if dump_result:
@@ -516,8 +514,7 @@ def _preprocessing_sample(  # noqa: C901
         else:
             dir_name = "Preprocessing"
         errdir = specpipe_report_directory + f"{dir_name}/Step_results/Error_logs/"
-        if not os.path.exists(unc_path(errdir)):
-            os.makedirs(unc_path(errdir))
+        os.makedirs(unc_path(errdir), exist_ok=True)
         assert hasattr(datetime, 'now')
         cts: str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         # PID for multiprocessing
@@ -1094,8 +1091,7 @@ def _model_evaluator(  # noqa: C901
     if result_directory == "":
         result_directory = specpipe_report_directory
     model_result_dir = result_directory + "Modeling/"
-    if not os.path.exists(unc_path(model_result_dir)):
-        os.makedirs(unc_path(model_result_dir))
+    os.makedirs(unc_path(model_result_dir), exist_ok=True)
 
     # Validate sample_list_label - Absolutely unique number if label not provided (commonly it should be given)
     if sample_list_label == "":
@@ -1118,8 +1114,7 @@ def _model_evaluator(  # noqa: C901
 
     # Save preprocess chain info for the sample_list
     model_report_dir = model_result_dir + "Model_evaluation_reports/"
-    if not os.path.exists(unc_path(model_report_dir)):
-        os.makedirs(unc_path(model_report_dir))
+    os.makedirs(unc_path(model_report_dir), exist_ok=True)
     # Chain file name
     chain_label_file_path = model_report_dir + f"{preprocess_chain_label}.txt"
     # Save chain process file
@@ -1253,11 +1248,9 @@ def _model_evaluator_mp(
         if result_directory == "":
             result_directory = specpipe_report_directory
         model_result_dir = result_directory + "Modeling/"
-        if not os.path.exists(unc_path(model_result_dir)):
-            os.makedirs(unc_path(model_result_dir))
+        os.makedirs(unc_path(model_result_dir), exist_ok=True)
         errdir = model_result_dir + "Error_logs/"
-        if not os.path.exists(unc_path(errdir)):
-            os.makedirs(unc_path(errdir))
+        os.makedirs(unc_path(errdir), exist_ok=True)
         cts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         pid = os.getpid()
         error_log_path = errdir + f"error_{cts}_pid_{pid}.log"

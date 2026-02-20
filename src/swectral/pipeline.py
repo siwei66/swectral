@@ -568,8 +568,7 @@ class SpecPipe:
             ## Save to file
             # Output path
             sdir = self._spec_exp.report_directory + "Pre_execution_test_data/"
-            if not os.path.exists(unc_path(sdir)):
-                os.makedirs(unc_path(sdir))
+            os.makedirs(unc_path(sdir), exist_ok=True)
 
             # Save test image
             test_img_path = sdir + "test_images." + img_path.split(".")[-1]
@@ -622,8 +621,7 @@ class SpecPipe:
             ## Save to file
             # Output path
             sdir = self._spec_exp.report_directory + "Pre_execution_test_data/"
-            if not os.path.exists(unc_path(sdir)):
-                os.makedirs(unc_path(sdir))
+            os.makedirs(unc_path(sdir), exist_ok=True)
 
             # Testing spectrum table
             td2 = pd.DataFrame([list(spec1d)], columns=[("Band_" + str(i + 1)) for i in range(len(spec1d))])
@@ -2865,8 +2863,7 @@ class SpecPipe:
 
         # Create save dir
         report_dir = self.report_directory + "SpecPipe_configuration/"
-        if not os.path.exists(unc_path(report_dir)):
-            os.makedirs(unc_path(report_dir))
+        os.makedirs(unc_path(report_dir), exist_ok=True)
 
         # Get configs
         df_process = self.ls_process(print_result=False, return_result=True)
@@ -3109,8 +3106,7 @@ class SpecPipe:
 
         # Preprocessed test image dir
         preprocessed_img_dir = self._spec_exp.report_directory + "test_run/Preprocessed_images/"
-        if not os.path.exists(unc_path(preprocessed_img_dir)):
-            os.makedirs(unc_path(preprocessed_img_dir))
+        os.makedirs(unc_path(preprocessed_img_dir), exist_ok=True)
 
         # Preprocessing test
         status_results: dict = _preprocessing_sample(  # type: ignore[call-overload]
@@ -3233,8 +3229,7 @@ class SpecPipe:
                         test_data_range: float = float(np.nanmax(tsample) - np.nanmin(tsample))
                         # Model report dir
                         model_report_dir = specpipe_report_directory + "test_run/"
-                        if not os.path.exists(unc_path(model_report_dir)):
-                            os.makedirs(unc_path(model_report_dir))
+                        os.makedirs(unc_path(model_report_dir), exist_ok=True)
                         # Build testing sample list
                         assert hasattr(model_methodi, 'is_regression')
                         if model_methodi.is_regression:
@@ -3481,8 +3476,7 @@ class SpecPipe:
             result_directory = self._spec_exp.report_directory
         # Preprocessed image dir for data level 0~4
         preprocessed_img_dir = result_directory + "Preprocessing/Preprocessed_images/"
-        if not os.path.exists(unc_path(preprocessed_img_dir)):
-            os.makedirs(unc_path(preprocessed_img_dir))
+        os.makedirs(unc_path(preprocessed_img_dir), exist_ok=True)
 
         # Start preprocessing
         if show_progress:
@@ -3585,12 +3579,10 @@ class SpecPipe:
         # Validate result_directory / report_directory
         # Step dir for chain results
         step_dir = result_directory + "Preprocessing/Step_results/"
-        if not os.path.exists(unc_path(step_dir)):
-            os.makedirs(unc_path(step_dir))
+        os.makedirs(unc_path(step_dir), exist_ok=True)
         # log dir for resume
         log_dir_path = step_dir + "Preprocess_progress_logs/"
-        if not os.path.exists(unc_path(log_dir_path)):
-            os.makedirs(unc_path(log_dir_path))
+        os.makedirs(unc_path(log_dir_path), exist_ok=True)
 
         # Check running log and subset sample data
         if not resume:
@@ -3600,7 +3592,7 @@ class SpecPipe:
                 shutil.rmtree(unc_path(log_dir_path))
         else:
             if not os.path.exists(unc_path(log_dir_path)):
-                os.makedirs(unc_path(log_dir_path))
+                os.makedirs(unc_path(log_dir_path), exist_ok=True)
                 finished_samples = []
             else:
                 finished_samples = [
@@ -3718,8 +3710,7 @@ class SpecPipe:
         if result_directory == "":
             result_directory = self._spec_exp.report_directory
         preprocess_result_dir = result_directory + "Preprocessing/"
-        if not os.path.exists(unc_path(preprocess_result_dir)):
-            os.makedirs(unc_path(preprocess_result_dir))
+        os.makedirs(unc_path(preprocess_result_dir), exist_ok=True)
 
         # Validate preprocessing result file paths
         sd_paths = [
@@ -3979,8 +3970,7 @@ class SpecPipe:
             raise ValueError(f"\nPreprocessing result directory not found, got path:\n{preprocess_result_dir}")
         # Modeling dir
         model_result_dir = result_directory + "Modeling/"
-        if not os.path.exists(unc_path(model_result_dir)):
-            os.makedirs(unc_path(model_result_dir))
+        os.makedirs(unc_path(model_result_dir), exist_ok=True)
 
         # Validate models
         model_procs = [proc for proc in self.process if proc[3] == "model"]
@@ -4013,29 +4003,32 @@ class SpecPipe:
             )
 
         # Check running log and subset sample data
-        log_path = model_result_dir + "Model_evaluation_reports/" + "modeling_progress_log.dill"
+        model_subdir_root = unc_path(self.report_directory + "Modeling/Model_evaluation_reports/")
+        log_path = unc_path(model_subdir_root + "modeling_progress_log.dill")
         if not resume:
             rest_cd_paths = cd_paths
             # Clear log
             self._clear_model_log(log_path)
             modeling_finished = False
         else:
-            if not os.path.exists(unc_path(log_path)):
-                rest_cd_paths = cd_paths
+            if not os.path.exists(unc_path(model_subdir_root + ".__finished.s")):
+                if not os.path.exists(unc_path(log_path)):
+                    rest_cd_paths = cd_paths
+                else:
+                    modeling_progress_log = load_vars(unc_path(log_path))["modeling_progress_log"]
+                    rest_cd_paths = []
+                    for cdp in cd_paths:
+                        cprocs = load_vars(unc_path(cdp))["chain_procs"]
+                        if cprocs not in modeling_progress_log:
+                            rest_cd_paths.append(cdp)
+                if len(rest_cd_paths) == 0:
+                    modeling_finished = True
+                else:
+                    modeling_finished = False
             else:
-                modeling_progress_log = load_vars(unc_path(log_path))["modeling_progress_log"]
-                rest_cd_paths = []
-                for cdp in cd_paths:
-                    cprocs = load_vars(unc_path(cdp))["chain_procs"]
-                    if cprocs not in modeling_progress_log:
-                        rest_cd_paths.append(cdp)
-            if len(rest_cd_paths) == 0:
                 modeling_finished = True
-            else:
-                modeling_finished = False
 
         # Pipeline progress observation for multiprocessing
-        model_subdir_root = unc_path(self.report_directory + "Modeling/Model_evaluation_reports/")
         if n_processor > 1:
             # Pipeline and resulting file configuration
             n_chains = len(self.ls_chains(print_label=False))
@@ -4082,11 +4075,9 @@ class SpecPipe:
                     except Exception as e:
                         # Validate report directory
                         model_result_dir = result_directory + "Modeling/"
-                        if not os.path.exists(unc_path(model_result_dir)):
-                            os.makedirs(unc_path(model_result_dir))
+                        os.makedirs(unc_path(model_result_dir), exist_ok=True)
                         errdir = model_result_dir + "Error_logs/"
-                        if not os.path.exists(unc_path(errdir)):
-                            os.makedirs(unc_path(errdir))
+                        os.makedirs(unc_path(errdir), exist_ok=True)
                         cts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                         pid = os.getpid()
                         error_log_path = errdir + f"error_{cts}_pid_{pid}.log"
@@ -4134,10 +4125,10 @@ class SpecPipe:
                         f"\nPreprocessing errors, please check error logs in the following path:\n{errorlog_path}"
                     )
 
-        # Complete modeling progress monitoring
-        open(model_subdir_root + ".__finished.s", "w").close()
-        if n_processor > 1:
-            observer.join()
+            # Complete modeling progress monitoring
+            open(unc_path(model_subdir_root + ".__finished.s"), "w").close()
+            if n_processor > 1:
+                observer.join()
 
         # Print result dir and save corresponding targets
         if len(result_directory) > 0:
