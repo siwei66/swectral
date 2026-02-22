@@ -255,7 +255,6 @@ class SpecPipe:
         _spec_exp_validator(spec_exp)
 
         ## Private internal attributes
-        # TODO: self.__sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str]] = spec_exp.sample_targets  # noqa: E501
         self.__sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]] = (
             spec_exp.sample_targets
         )  # noqa: E501
@@ -384,12 +383,10 @@ class SpecPipe:
         self.__band_wavelength = value
 
     ## Read only or immuatable properties
-    # TODO: def _sample_targets(self) -> list[tuple[str, str, Union[str, bool, int, float], str, str]]:
     @property
     def _sample_targets(self) -> list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]]:
         return self.__sample_targets
 
-    # TODO: def _sample_targets(self, value: list[tuple[str, str, Union[str, bool, int, float], str, str]]) -> None:
     @_sample_targets.setter
     def _sample_targets(
         self, value: list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]]
@@ -608,7 +605,6 @@ class SpecPipe:
                 "label": "test_run",
                 "target": None,
                 "validation_group": "test_run",
-                # TODO: new
                 "test": np.int8(1),
                 "train": np.int8(1),
                 "img_path": img_path,
@@ -647,7 +643,6 @@ class SpecPipe:
                 "label": "test_run",
                 "target": None,
                 "validation_group": "test_run",
-                # TODO: new
                 "test": np.int8(1),
                 "train": np.int8(1),
                 "img_path": img_path,
@@ -3014,7 +3009,6 @@ class SpecPipe:
                 sdata["label"] = [lbt[1] for lbt in self.spec_exp.sample_labels if lbt[0] == roit[0]][0]
                 sdata["target"] = [tg[2] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["validation_group"] = [tg[4] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
-                # TODO: new
                 sdata["train"] = [tg[5] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["test"] = [tg[6] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["img_path"] = [
@@ -3034,7 +3028,6 @@ class SpecPipe:
                 sdata["label"] = [lbt[1] for lbt in self.spec_exp.sample_labels if lbt[0] == st[0]][0]
                 sdata["target"] = [tg[2] for tg in self.spec_exp.sample_targets if tg[0] == st[0]][0]
                 sdata["validation_group"] = [tg[4] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
-                # TODO: new
                 sdata["train"] = [tg[5] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["test"] = [tg[6] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["spec1d"] = tuple(st[4])
@@ -3256,7 +3249,6 @@ class SpecPipe:
                         assert hasattr(model_methodi, 'is_regression')
                         if model_methodi.is_regression:
                             # Regression mock data
-                            # TODO: test_samples: list[tuple[str, str, str, Any, Union[float, int, bool, str], np.ndarray]] = [  # noqa: E501
                             test_samples: list[
                                 tuple[str, str, str, np.int8, np.int8, Any, Union[float, int, bool, str], np.ndarray]
                             ]
@@ -3265,7 +3257,6 @@ class SpecPipe:
                                     str(i),
                                     str(i),
                                     str(i),
-                                    # TODO: new
                                     np.int8(1),
                                     np.int8(1),
                                     ts_shape,
@@ -3287,7 +3278,6 @@ class SpecPipe:
                                     str(i),
                                     str(i),
                                     str(i),
-                                    # TODO: new
                                     np.int8(1),
                                     np.int8(1),
                                     ts_shape,
@@ -3776,7 +3766,6 @@ class SpecPipe:
                 sample_label = sdata["label"]
                 sample_y = sdata["target"]
                 sample_vg = sdata["validation_group"]  # sample validation group
-                # TODO: new
                 sample_te = sdata["test"]
                 sample_tr = sdata["train"]
                 # Sample data
@@ -3789,7 +3778,6 @@ class SpecPipe:
                         step_dl_out = status_result[3]
                         if step_dl_out != 7:
                             raise ValueError("Input data level of modeling step")
-                        # TODO: pre_results.append((sample_id, sample_label, sample_vg, step_data_shape, sample_y, step_data))  # noqa: E501
                         pre_results.append(
                             (
                                 sample_id,
@@ -3822,23 +3810,18 @@ class SpecPipe:
                 # Results to table (df)
                 chain_res_table = []
                 for pres in pre_results:
-                    # TODO: pres_data = pres[5]
                     pres_data = pres[-1]
                     if isinstance(pres_data, Iterable):
                         pres_data_tuple: tuple = tuple(pres_data)
                     else:
                         pres_data_tuple = (pres_data,)
                     chain_res_table.append(
-                        # TODO: (pres[0], str(pres[1]), str(pres[2]), str(pres[3]), pres[4]) + pres_data_tuple
-                        (pres[0], str(pres[1]), str(pres[2]), pres[3], pres[4], str(pres[5]), pres[6])
-                        + pres_data_tuple
+                        (pres[0], str(pres[1]), str(pres[2]), pres[3], pres[4], str(pres[5]), pres[6]) + pres_data_tuple
                     )
                 arr_chain_res = np.array(chain_res_table)
 
                 coln_chain_res = ["Sample_ID", "Label", "Validation_group", "Test", "Train", "X_shape", "y"] + [
-                    # TODO: f"x{i}" for i in range(arr_chain_res.shape[1] - 5)
-                    f"x{i}"
-                    for i in range(arr_chain_res.shape[1] - 7)
+                    f"x{i}" for i in range(arr_chain_res.shape[1] - 7)
                 ]
 
                 df_chain_res = pd.DataFrame(arr_chain_res, columns=coln_chain_res)

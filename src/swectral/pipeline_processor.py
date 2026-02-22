@@ -460,7 +460,6 @@ def _preprocessing_sample(  # noqa: C901
             "target": sample_data["target"],
             "sample_label": sample_data["label"],
             "validation_group": sample_data["validation_group"],
-            # TODO: new
             "test": sample_data["test"],
             "train": sample_data["train"],
             "status_results": status_results,
@@ -971,7 +970,6 @@ class _ModelMethod:
                 str,
                 str,
                 str,
-                # TODO: new
                 np.int8,
                 np.int8,
                 tuple[int],
@@ -1045,7 +1043,6 @@ def _model_evaluator(  # noqa: C901
             str,
             str,
             str,
-            # TODO: new
             np.int8,
             np.int8,
             tuple[int],

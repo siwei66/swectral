@@ -35,7 +35,7 @@ report_dir = demo_dir + "/demo_results_classification/"
 os.makedirs(report_dir)
 
 
-# %% Configuration and computation
+# %% -------------------------------------------------------------------------------------------------------------------
 
 # 2. Configure your experiment data
 
@@ -260,6 +260,8 @@ len(chain_results)
 chain_results[0].keys()
 chain_results[0]['ROC_curve']
 
+
+# %% -------------------------------------------------------------------------------------------------------------------
 
 # 6 Regression Case
 

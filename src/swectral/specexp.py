@@ -287,9 +287,8 @@ class SpecExp:
         # sample_labels: [0 fixed sample id, 1 user assinged labels, 2 sample belonging group]
         self._sample_labels: list[tuple[str, str, str]] = []
 
-        # TODO: Sample targets
+        # Sample targets
         # sample_targets: [0 fixed sample id, 1 user assinged labels, 2 target values, 3 sample belonging group, 4 validation group, 5 test mask, 6 train mask]  # noqa: E501
-        # TODO: self._sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str]] = []
         self._sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]] = []
 
         # Creating time
@@ -357,15 +356,12 @@ class SpecExp:
             sid = lbt[0]
             lbi = lbt[1]
             sgroup = lbt[2]
-            # TODO: target, sgroup1, vgroup = [tgt[2:5] for tgt in self.sample_targets if tgt[0] == sid][0]
             target, sgroup1, vgroup, mte, mtr = [tgt[2:7] for tgt in self.sample_targets if tgt[0] == sid][0]
             # Validate group consistency
             assert sgroup == sgroup1
-            # TODO: sample_targets.append((sid, lbi, target, sgroup, vgroup))
             sample_targets.append((sid, lbi, target, sgroup, vgroup, mte, mtr))
         self._sample_targets = sample_targets
 
-    # TODO: def sample_targets(self) -> list[tuple[str, str, Union[str, bool, int, float], str, str]]:
     @property
     def sample_targets(self) -> list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]]:
         return self._sample_targets
@@ -374,23 +370,19 @@ class SpecExp:
     @simple_type_validator
     def sample_targets(  # noqa: C901
         self,
-        # TODO: value: Annotated[Any, arraylike_validator(shape=(0, 5))],
         value: Annotated[Any, arraylike_validator(shape=(0, 7))],
     ) -> None:
 
         # Validate DataFrame
         if type(value) is pd.DataFrame:
             if (
-                # TODO: value.columns == ["Sample_ID", "Label", "Target_value", "Group", "Validation_group"]
-                value.columns
-                == ["Sample_ID", "Label", "Target_value", "Group", "Validation_group", "Test", "Train"]
+                value.columns == ["Sample_ID", "Label", "Target_value", "Group", "Validation_group", "Test", "Train"]
             ).all() & (list(value["Sample_ID"]) == [lbt[0] for lbt in self._sample_labels]):
                 value = value.iloc[:, :]
 
         # Validate Non-DataFrame array-like
         value_df = pd.DataFrame(value)
         del value
-        # TODO: value_df.columns = ["Sample_ID", "Label", "Target_value", "Group", "Validation_group"]
         value_df.columns = ["Sample_ID", "Label", "Target_value", "Group", "Validation_group", "Test", "Train"]
         value_df["Label"] = np.array(value_df["Label"]).astype(str)
 
@@ -411,10 +403,8 @@ class SpecExp:
         if len(self._sample_labels) == 0:
             raise ValueError("Cannot set target values: No samples exist.\nPlease add samples first.")
         if len(self._sample_targets) == 0:
-            # TODO: value_df = dataframe_validator(shape=(len(self._sample_labels), 5))(value_df)
             value_df = dataframe_validator(shape=(len(self._sample_labels), 7))(value_df)
         else:
-            # TODO: value_df = dataframe_validator(shape=(len(self._sample_targets), 5))(value_df)
             value_df = dataframe_validator(shape=(len(self._sample_targets), 7))(value_df)
 
         # Validate labels
@@ -4497,23 +4487,19 @@ class SpecExp:
         if len(self.sample_targets) > 0:
             dft = pd.DataFrame(
                 self.sample_targets,
-                # TODO: columns=["Sample_ID", "Label", "Target_value", "Group", "Validation_group"],
                 columns=["Sample_ID", "Label", "Target_value", "Group", "Validation_group", "Test", "Train"],
             )
         else:
             tvs = [
-                # TODO: (st[0], st[1], np.nan, self._sample_id_to_group([st[0]])[0], st[0])
                 (st[0], st[1], np.nan, self._sample_id_to_group([st[0]])[0], st[0], np.int8(1), np.int8(1))
                 for st in self.sample_labels
             ]
             dft = pd.DataFrame(
                 tvs,
-                # TODO: columns=["Sample_ID", "Label", "Target_value", "Group", "Validation_group"],
                 columns=["Sample_ID", "Label", "Target_value", "Group", "Validation_group", "Test", "Train"],
             )
         dft.iloc[:, :2] = np.array(dft.iloc[:, :2]).astype("object")
         dft.iloc[:, 3:5] = np.array(dft.iloc[:, 3:5]).astype("object")
-        # TODO: new
         dft.iloc[:, 5:7] = np.array(dft.iloc[:, 5:7]).astype("int8")
 
         # Return results
@@ -4690,12 +4676,10 @@ class SpecExp:
             if nid in old_ids:
                 target = [tt for tt in self._sample_targets if tt[0] == nid][0]
                 labl: str = [lt[1] for lt in self._sample_labels if lt[0] == nid][0]
-                # TODO: target = (nid, labl, target[2], self._sample_id_to_group([nid])[0], target[4])
                 target = (nid, labl, target[2], self._sample_id_to_group([nid])[0], target[4], target[5], target[6])
             else:
                 labl = [lt[1] for lt in self._sample_labels if lt[0] == nid][0]
                 group = self._sample_id_to_group([nid])[0]
-                # TODO: target = (nid, labl, None, group, nid)
                 target = (nid, labl, None, group, nid, np.int8(1), np.int8(1))
             new_targets.append(target)
         # Update targets - keep old labeled data unchange

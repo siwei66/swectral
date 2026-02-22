@@ -11,7 +11,7 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 # Tip 1: For multiprocessing on Windows, all working codes must be written within block "if __name__ == '__main__':"
 if __name__ == '__main__':
 
-    # %% ------------------------------------------------------------------------------------------------------------
+    # %% ---------------------------------------------------------------------------------------------------------------
     # 1. Data preparation
     # Set data directory path
     import os
@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
     os.makedirs(report_dir)
 
-    # %% ------------------------------------------------------------------------------------------------------------
+    # %% ---------------------------------------------------------------------------------------------------------------
     # 2. Configure your experiment data
     # 2.1 Create a spectral experiment
     # Create a SpecExp instance for experiment data
@@ -172,7 +172,7 @@ if __name__ == '__main__':
     # n_processor = -2: uses maximal available CPUs minus 1 processors on all platforms
     pipe.run(n_processor=-2, model_test_coverage=0.1)
 
-    # %% ------------------------------------------------------------------------------------------------------------
+    # %% ---------------------------------------------------------------------------------------------------------------
     # 5 Regression Case
 
     # Create a directory for regression results

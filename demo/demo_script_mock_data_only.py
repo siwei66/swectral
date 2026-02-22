@@ -243,9 +243,6 @@ pipe.ls_process()
 # Check processing chains with method id
 pipe.ls_chains()
 
-# %% One-shot run barrier for Windows
-if os.name == "nt":
-    raise RuntimeError("SpecPipe.run must be executed separately on Windows.")
 # Run pipeline
 pipe.run()
 

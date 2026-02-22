@@ -11,7 +11,7 @@ def ClearExistDemoDir():
     import os
     import shutil
     demo_dir = os.getcwd() + '/SpecPipeDemoWorkflow/'
-    shutil.rmtree(demo_dir)
+    shutil.rmtree(demo_dir, ignore_errors=True)
 
 
 # One-shot running protector in interactive environment
