@@ -50,7 +50,11 @@ from pathos.multiprocessing import ProcessingPool, cpu_count
 import multiprocessing as nmp
 
 # Local
-from .groupstats import sample_group_stats, performance_marginal_stats
+from .groupstats import (
+    sample_group_stats,
+    performance_metrics_summary,
+    performance_marginal_stats,
+)
 from .modeleva import ModelEva
 from .rasterop import croproi, pixel_apply
 from .resultcli import group_stats_report, core_chain_report
@@ -251,7 +255,10 @@ class SpecPipe:
         _spec_exp_validator(spec_exp)
 
         ## Private internal attributes
-        self.__sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str]] = spec_exp.sample_targets
+        # TODO: self.__sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str]] = spec_exp.sample_targets  # noqa: E501
+        self.__sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]] = (
+            spec_exp.sample_targets
+        )  # noqa: E501
         self.__is_target_numeric: bool = self._check_target_numeric(spec_exp)
         self.__band_wavelength: Optional[tuple[Union[int, float], ...]] = None
         self.__pretest_data: Optional[dict[str, Any]] = None
@@ -377,12 +384,16 @@ class SpecPipe:
         self.__band_wavelength = value
 
     ## Read only or immuatable properties
+    # TODO: def _sample_targets(self) -> list[tuple[str, str, Union[str, bool, int, float], str, str]]:
     @property
-    def _sample_targets(self) -> list[tuple[str, str, Union[str, bool, int, float], str, str]]:
+    def _sample_targets(self) -> list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]]:
         return self.__sample_targets
 
+    # TODO: def _sample_targets(self, value: list[tuple[str, str, Union[str, bool, int, float], str, str]]) -> None:
     @_sample_targets.setter
-    def _sample_targets(self, value: list[tuple[str, str, Union[str, bool, int, float], str, str]]) -> None:
+    def _sample_targets(
+        self, value: list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]]
+    ) -> None:
         raise ValueError("_sample_targets cannot be modified in SpecPipe, please update using 'SpecExp' instead")
 
     @property
@@ -518,7 +529,7 @@ class SpecPipe:
     # 0 - image (path), \
     # 1 - pixel_spec (1D), 2 - pixel_specs_array (2D), 3 - pixel_specs_tensor (3D), 4 - pixel_hyperspecs_tensor (3D), \
     # 5 - image_ROI (img_path + ROI coords), 6 - ROI_specs (2D), 7 - spec1d (1D spec stats)
-    # Pretest_data: [ID, label, target, validation_group, img_path, test_img_path, roi_coords, test_roi_coords, roitable, spec1d]  # noqa: E501
+    # Pretest_data: [ID, label, target, validation_group, test, train, img_path, test_img_path, roi_coords, test_roi_coords, roitable, spec1d]  # noqa: E501
     @simple_type_validator
     def _pretest_data_init(self) -> None:
         """
@@ -545,7 +556,7 @@ class SpecPipe:
                 roitable = roispec(img_path, bdmin, as_type=float)
             except Exception as e:
                 raise ValueError(
-                    f"\nUnable to retrieve ROI spectra from image:\n\nROI:\n{sroi_test}\n\nImage:\n{img_test}\n\n{e}"
+                    f"\nUnable to retrieve ROI spectra from image:\n\nROI:\n{sroi_test}\n\nImage:\n{img_test}\n\n"
                 ) from e
 
             # Get test image ROI
@@ -597,6 +608,9 @@ class SpecPipe:
                 "label": "test_run",
                 "target": None,
                 "validation_group": "test_run",
+                # TODO: new
+                "test": np.int8(1),
+                "train": np.int8(1),
                 "img_path": img_path,
                 "test_img_path": test_img_path,
                 "roi_coords": bdmin,
@@ -632,6 +646,10 @@ class SpecPipe:
                 "ID": "test_run",
                 "label": "test_run",
                 "target": None,
+                "validation_group": "test_run",
+                # TODO: new
+                "test": np.int8(1),
+                "train": np.int8(1),
                 "img_path": img_path,
                 "test_img_path": test_img_path,
                 "roi_coords": bdmin,
@@ -823,7 +841,7 @@ class SpecPipe:
                     except Exception as e:
                         raise ValueError(
                             f"Failed to open resulting raster image of {method.__name__}.\
-                                \nGot path:\n{result}, \nError msg:{e}"
+                                \nGot path:\n{result}"
                         ) from e
                 else:
                     raise ValueError(f"Resulting file path is invalid: {result}")
@@ -993,9 +1011,10 @@ class SpecPipe:
 
             If a dictionary of parameters is provided, it may include:
 
-            ``random_state`` : int, Random state for splitting and shuffling.
+                ``random_state`` : int
+                    Random state for splitting and shuffling.
 
-            Default is ``"default"``, which uses the default plotting behavior.
+            Default is ``"default"``, which uses the default data splitting behavior.
 
         validation_config : str or dict, optional
             Validation behavior configuration.
@@ -1012,7 +1031,7 @@ class SpecPipe:
                 ``save_fold_data`` : bool
                     Whether models of the validation folds are saved to files. Default is True.
 
-            Default is ``"default"``, which uses the default plotting behavior.
+            Default is ``"default"``, which uses the default validation behavior.
 
         metrics_config : str or dict or None, optional
             Metrics computation configuration.
@@ -1158,7 +1177,7 @@ class SpecPipe:
             Residual analysis configuration.
 
             If None, residual analysis is skipped.
-            Default is ``"default"``, which uses the default plotting behavior.
+            Default is ``"default"``, which uses the default residual analysis behavior.
 
         residual_plot_config : str or dict or None, optional
             Residual plot configuration for regression models.
@@ -1183,7 +1202,7 @@ class SpecPipe:
                 ``random_state`` : int or None, optional
                     random state for data splitting.
 
-            Default is ``"default"``, which uses the default plotting behavior.
+            Default is ``"default"``, which uses the default influence analysis behavior.
 
         See Also
         --------
@@ -1798,11 +1817,9 @@ class SpecPipe:
                 )
             except Exception as e:
                 if test_error_raise:
-                    raise ValueError(f"Method testing fails: \n{e}") from e
+                    raise ValueError("Method testing fails") from e
                 else:
-                    warnings.warn(
-                        f"Method fails on '{input_data_level}' testing data: \n{e}", UserWarning, stacklevel=2
-                    )
+                    warnings.warn(f"Method fails on '{input_data_level}' testing data", UserWarning, stacklevel=2)
 
         # Add model - model method constructor
         else:
@@ -2152,7 +2169,7 @@ class SpecPipe:
                 except Exception as e:
                     raise ValueError(
                         f"\nInvalid processing method with type '{type(df_proc.iloc[i, -3])}' detected in process:\
-                            \n{df_proc.drop('Method', axis=1).iloc[i, :]}\n\nError message:\n{e}"
+                            \n{df_proc.drop('Method', axis=1).iloc[i, :]}\n\n"
                     ) from e
         # Print simple df
         if print_result:
@@ -2323,8 +2340,7 @@ class SpecPipe:
                         except Exception as e:
                             raise ValueError(
                                 f"\nInvalid processing method with type '{type(df_proc.iloc[i, -3])}' \
-                                    detected in process: \n{df_proc.drop('Method', axis=1).iloc[i, :]}\
-                                    \n\nError message:\n{e}"
+                                    detected in process: \n{df_proc.drop('Method', axis=1).iloc[i, :]}\n\n"
                             ) from e
                 with pd.option_context("display.max_rows", None, "display.max_columns", None):
                     df_proc_simple = df_proc.iloc[:, [1, 2, 3, 4, 5]]
@@ -2998,6 +3014,9 @@ class SpecPipe:
                 sdata["label"] = [lbt[1] for lbt in self.spec_exp.sample_labels if lbt[0] == roit[0]][0]
                 sdata["target"] = [tg[2] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["validation_group"] = [tg[4] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
+                # TODO: new
+                sdata["train"] = [tg[5] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
+                sdata["test"] = [tg[6] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["img_path"] = [
                     imgt[4] for imgt in self.spec_exp.images if ((imgt[1] == roit[1]) & (imgt[2] == roit[2]))
                 ][0]
@@ -3015,6 +3034,9 @@ class SpecPipe:
                 sdata["label"] = [lbt[1] for lbt in self.spec_exp.sample_labels if lbt[0] == st[0]][0]
                 sdata["target"] = [tg[2] for tg in self.spec_exp.sample_targets if tg[0] == st[0]][0]
                 sdata["validation_group"] = [tg[4] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
+                # TODO: new
+                sdata["train"] = [tg[5] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
+                sdata["test"] = [tg[6] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["spec1d"] = tuple(st[4])
                 sample_data.append(sdata)
             self.__sample_data = sample_data
@@ -3223,7 +3245,7 @@ class SpecPipe:
                                 f.write(f"{pproc}")
 
                     # For data level of numeric values
-                    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
+                    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
                     # if (dl_in_ind != 0) & (dl_in_ind != 5):
                     if dl_in_ind == 7:
                         test_data_range: float = float(np.nanmax(tsample) - np.nanmin(tsample))
@@ -3234,11 +3256,18 @@ class SpecPipe:
                         assert hasattr(model_methodi, 'is_regression')
                         if model_methodi.is_regression:
                             # Regression mock data
-                            test_samples: list[tuple[str, str, str, Any, Union[float, int, bool, str], np.ndarray]] = [
+                            # TODO: test_samples: list[tuple[str, str, str, Any, Union[float, int, bool, str], np.ndarray]] = [  # noqa: E501
+                            test_samples: list[
+                                tuple[str, str, str, np.int8, np.int8, Any, Union[float, int, bool, str], np.ndarray]
+                            ]
+                            test_samples = [
                                 (
                                     str(i),
                                     str(i),
                                     str(i),
+                                    # TODO: new
+                                    np.int8(1),
+                                    np.int8(1),
                                     ts_shape,
                                     float(i),
                                     tsample
@@ -3258,6 +3287,9 @@ class SpecPipe:
                                     str(i),
                                     str(i),
                                     str(i),
+                                    # TODO: new
+                                    np.int8(1),
+                                    np.int8(1),
                                     ts_shape,
                                     str(["a", "b"][int(i % 2)]),
                                     tsample * (1 + test_data_range * 0.25 * (i % 2 + 0.1 * np.random.rand(1)[0])),
@@ -3333,7 +3365,7 @@ class SpecPipe:
     # Sample data format - standalone spec: {ID, label, target, spec1d: tuple}
     # Process: [0 Process_ID, 1 Process_label, 2 Input_data_level, 3 Output_data_level, 4 Application_sequence, 5 Method_callable, 6 _Full_app_seq, 7 _Alternative_number]  # noqa: E501
     # Status_result: (0 - step_id, 1 step_procs, 2 dl_in, 3 dl_out, 4 sample_result)
-    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
+    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
     @simple_type_validator
     def preprocessing(  # noqa: C901
         self,
@@ -3625,7 +3657,7 @@ class SpecPipe:
             ):
                 sdata = rest_sample_data[sd_ind]
                 pti = _preprocessing_sample(
-                    sdata,
+                    sample_data=sdata,
                     process=self.process,
                     custom_chains=self.custom_chains,
                     process_chains=self.process_chains,
@@ -3744,6 +3776,9 @@ class SpecPipe:
                 sample_label = sdata["label"]
                 sample_y = sdata["target"]
                 sample_vg = sdata["validation_group"]  # sample validation group
+                # TODO: new
+                sample_te = sdata["test"]
+                sample_tr = sdata["train"]
                 # Sample data
                 for status_result in status_results:
                     if tuple(status_result[1]) == tuple(pchain):
@@ -3754,7 +3789,19 @@ class SpecPipe:
                         step_dl_out = status_result[3]
                         if step_dl_out != 7:
                             raise ValueError("Input data level of modeling step")
-                        pre_results.append((sample_id, sample_label, sample_vg, step_data_shape, sample_y, step_data))
+                        # TODO: pre_results.append((sample_id, sample_label, sample_vg, step_data_shape, sample_y, step_data))  # noqa: E501
+                        pre_results.append(
+                            (
+                                sample_id,
+                                sample_label,
+                                sample_vg,
+                                sample_te,
+                                sample_tr,
+                                step_data_shape,
+                                sample_y,
+                                step_data,
+                            )
+                        )  # noqa: E501
 
             ## Save resutls to files
             # Create file name
@@ -3764,9 +3811,9 @@ class SpecPipe:
             chain_name1 = f"PreprocessingChainResult_chain_ind_{str(pci)}"
 
             # Dump results to dill
-            # Chain_res / sample_list
-            # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
-            # Typing: list[tuple[str, tuple[int], Union[str,int,bool,float], Annotated[Any,arraylike_validator(ndim=1)]]]  # noqa: E501
+            # chain_res == sample_list
+            # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
+            # Typing: list[tuple[str, str, str, np.int8, np.int8, tuple[int], Union[str,int,bool,float], Annotated[Any,arraylike_validator(ndim=1)]]]  # noqa: E501
             res_path_dill = preprocess_result_dir + chain_name1 + ".dill"
             dump_vars(unc_path(res_path_dill), {"chain_ind": pci, "chain_procs": pchain, "chain_res": pre_results})
 
@@ -3775,18 +3822,23 @@ class SpecPipe:
                 # Results to table (df)
                 chain_res_table = []
                 for pres in pre_results:
-                    pres_data = pres[5]
+                    # TODO: pres_data = pres[5]
+                    pres_data = pres[-1]
                     if isinstance(pres_data, Iterable):
                         pres_data_tuple: tuple = tuple(pres_data)
                     else:
                         pres_data_tuple = (pres_data,)
                     chain_res_table.append(
-                        (pres[0], str(pres[1]), str(pres[2]), str(pres[3]), pres[4]) + pres_data_tuple
+                        # TODO: (pres[0], str(pres[1]), str(pres[2]), str(pres[3]), pres[4]) + pres_data_tuple
+                        (pres[0], str(pres[1]), str(pres[2]), pres[3], pres[4], str(pres[5]), pres[6])
+                        + pres_data_tuple
                     )
                 arr_chain_res = np.array(chain_res_table)
 
-                coln_chain_res = ["Sample_ID", "Label", "Validation_group", "X_shape", "y"] + [
-                    f"x{i}" for i in range(arr_chain_res.shape[1] - 5)
+                coln_chain_res = ["Sample_ID", "Label", "Validation_group", "Test", "Train", "X_shape", "y"] + [
+                    # TODO: f"x{i}" for i in range(arr_chain_res.shape[1] - 5)
+                    f"x{i}"
+                    for i in range(arr_chain_res.shape[1] - 7)
                 ]
 
                 df_chain_res = pd.DataFrame(arr_chain_res, columns=coln_chain_res)
@@ -3807,6 +3859,7 @@ class SpecPipe:
                 # Save table to CSV
                 res_path_csv = preprocess_result_dir + chain_name1 + ".csv"
                 df_to_csv(df_chain_res, res_path_csv, index=False, return_path=False)
+
         # Add line after progress bar
         print("")
 
@@ -3849,7 +3902,8 @@ class SpecPipe:
         return preprocess_status
 
     # Run modeling on single dataset
-    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
+    # chain_res == sample_list
+    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
     @simple_type_validator
     def model_evaluation(  # noqa: C901
         self,
@@ -4059,7 +4113,7 @@ class SpecPipe:
                         # Use preprocess chain ID as chain label
                         pproc_chain_label = [f"Preprocessing_#{pci}" for pci, pc in enumerate(pchains) if pc == pchain][
                             0
-                        ]
+                        ]  # noqa: E501
                         _model_evaluator(
                             preprocess_result=pc_sample_list,
                             preprocess_chain=pchain,
@@ -4085,7 +4139,7 @@ class SpecPipe:
                                     error message: \n\n{str(e)}\n"
                         with open(unc_path(error_log_path), "w") as f:
                             f.write(err_msg)
-                        raise ValueError(e) from e
+                        raise ValueError(f"\nFailed in the modeling of preprocessing chain from path '{cdp}'") from e
             # Multiprocessing modeling
             else:
                 lock = mp.Manager().Lock()
@@ -4140,8 +4194,17 @@ class SpecPipe:
 
         # Performance summary and marginal performance stats
         if summary:
-            _ = performance_marginal_stats(self.report_directory)
-            _ = combined_model_marginal_stats(self.report_directory)
+            pipeline_config_dir = f"{self.report_directory}/SpecPipe_configuration/"
+            model_evaluation_report_dir = f"{self.report_directory}/Modeling/Model_evaluation_reports/"
+            metrics_dict = performance_metrics_summary(pipeline_config_dir, model_evaluation_report_dir)
+            _ = performance_marginal_stats(
+                report_directory=self.report_directory,
+                metrics_dict=metrics_dict,
+            )
+            _ = combined_model_marginal_stats(
+                report_directory=self.report_directory,
+                metrics_dict=metrics_dict,
+            )
 
         # Store computation status
         open(finish_status_path, "w").close()
@@ -4155,7 +4218,7 @@ class SpecPipe:
             except PermissionError as e:
                 raise PermissionError(f"\nNo permission to clear existed running log : \n'{log_path}'.\n") from e
             except Exception as e:
-                raise ValueError(f"\nError in clearing existed running log : \n{e}\n") from e
+                raise ValueError("\nError in clearing existed running log\n") from e
 
     def _save_sample_targets(self, result_dir: str) -> None:
         # Save dir

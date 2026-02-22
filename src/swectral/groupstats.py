@@ -9,6 +9,9 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 import os
 import shutil
 
+# Warnings
+import warnings
+
 # Basic data
 import pandas as pd
 import numpy as np
@@ -25,6 +28,9 @@ from scipy.stats import mannwhitneyu
 # Local
 from .roistats import Stats2d
 from .specio import RealNumber, simple_type_validator, unc_path
+
+# Progress
+from tqdm import tqdm
 
 
 # %% Experiment group sample data statistics for a chain
@@ -73,8 +79,18 @@ def chain_sample_group_stats(  # noqa: C901
     # Read preprocessed data
     df_preprocessed = pd.read_csv(unc_path(sample_data_path), header=0).iloc[:, 1:]
     # Validate columns
-    if len(df_preprocessed.columns) > 5:
-        if list(df_preprocessed.columns)[0:5] == ["Sample_ID", "Label", "Validation_group", "X_shape", "y"]:
+    # TODO: if len(df_preprocessed.columns) > 5:
+    if len(df_preprocessed.columns) > 7:
+        # TODO: if list(df_preprocessed.columns)[0:5] == ["Sample_ID", "Label", "Validation_group", "X_shape", "y"]:
+        if list(df_preprocessed.columns)[0:7] == [
+            "Sample_ID",
+            "Label",
+            "Validation_group",
+            "Test",
+            "Train",
+            "X_shape",
+            "y",
+        ]:
             pass
         else:
             raise ValueError(f"Invalid sample data columns: {df_preprocessed.columns}")
@@ -84,8 +100,16 @@ def chain_sample_group_stats(  # noqa: C901
     # Read sample groups
     df_sample_targets = pd.read_csv(unc_path(sample_target_path))
     # Validate columns
-    # if list(df_sample_targets.columns) == ['Sample_ID', 'Label', 'Target_value', 'Group']:
-    if list(df_sample_targets.columns) == ['Sample_ID', 'Label', 'Target_value', 'Group', 'Validation_group']:
+    # TODO: if list(df_sample_targets.columns) == ["Sample_ID", "Label", "Target_value", "Group", "Validation_group"]:
+    if list(df_sample_targets.columns) == [
+        "Sample_ID",
+        "Label",
+        "Target_value",
+        "Group",
+        "Validation_group",
+        "Test",
+        "Train",
+    ]:
         pass
     else:
         raise ValueError(f"Invalid sample data columns: {df_sample_targets.columns}")
@@ -93,7 +117,7 @@ def chain_sample_group_stats(  # noqa: C901
 
     # Validate target type if not specified
     # Check numeric-like
-    targets = df_preprocessed.iloc[:, 4]
+    targets = df_preprocessed.iloc[:, 6]
     is_numeric = True
     for yi in targets:
         if not isinstance(yi, RealNumber):
@@ -106,9 +130,9 @@ def chain_sample_group_stats(  # noqa: C901
             is_regression = False
     # Forced is_regression
     else:
-        if is_regression and not is_numeric:
+        if is_regression and (not is_numeric):
             raise ValueError(f"Got categorical target values when is_regression is True: {targets}")
-        elif not is_regression and is_numeric:
+        elif (not is_regression) and is_numeric:
             is_numeric = False
         else:
             pass
@@ -116,7 +140,7 @@ def chain_sample_group_stats(  # noqa: C901
     if is_regression:
         df_preprocessed['y'] = df_preprocessed['y'].astype("float")
     else:
-        df_preprocessed['y'] = df_preprocessed['y'].astype("str")
+        df_preprocessed['y'] = df_preprocessed['y'].astype('str')
 
     # Match group
     group = []
@@ -126,16 +150,18 @@ def chain_sample_group_stats(  # noqa: C901
     df_preprocessed['Group'] = group
 
     # Group stats column names for X and numeric y
-    stats_col = ['Group'] + list(df_preprocessed.columns[5:-1])
+    # TODO: stats_col = ['Group'] + list(df_preprocessed.columns[5:-1])
+    stats_col = ['Group'] + list(df_preprocessed.columns[7:-1])
 
     # Numeric targets - regression
     if is_regression:
         # Overall stats and default measures
-        ostats = Stats2d().summary(df_preprocessed.iloc[:, 4:-1].values)
+        # TODO: ostats = Stats2d().summary(df_preprocessed.iloc[:, 4:-1].values)
+        ostats = Stats2d().summary(df_preprocessed.iloc[:, 6:-1].values)
         # y stats
         df_ystats = pd.DataFrame(np.zeros((1 + len(df_preprocessed['Group'].unique()), 1 + len(ostats.keys()))))
         df_ystats.columns = ['Group'] + list(ostats.keys())
-        df_ystats['Group'] = df_ystats['Group'].astype('string')
+        df_ystats['Group'] = df_ystats['Group'].astype('str')
         ystats_row: list[Any] = ["OVERALL"]
         for m in list(ostats.keys()):
             # Y stats
@@ -154,7 +180,8 @@ def chain_sample_group_stats(  # noqa: C901
         # Group stats
         for ig, g in enumerate(list(df_preprocessed['Group'].unique())):
             gdata = df_preprocessed[df_preprocessed['Group'] == g]
-            gstats = Stats2d().summary(gdata.iloc[:, 4:-1].values)
+            # TODO: gstats = Stats2d().summary(gdata.iloc[:, 4:-1].values)
+            gstats = Stats2d().summary(gdata.iloc[:, 6:-1].values)
             ystats_row = [str(g)]
             for m in list(gstats.keys()):
                 # Y group stats
@@ -178,7 +205,9 @@ def chain_sample_group_stats(  # noqa: C901
         # Dump y stats dill (swectral private)
         dill_result_path = write_dir + ".__swectral_dill_data/.__swectral_result_summary_sample_targets_stats.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(df_ystats, open(unc_path(dill_result_path), "wb"))
+
+        with open(unc_path(dill_result_path), "wb") as f:
+            dill.dump(df_ystats, f)
         # Save X stats
         for m in list(gstats.keys()):
             dfm = df_xstats_dict[m]
@@ -190,9 +219,11 @@ def chain_sample_group_stats(  # noqa: C901
     # Categorical targets - classification
     else:
         # Overall stats and default measures
-        ostats_x = Stats2d().summary(df_preprocessed.iloc[:, 5:-1].values)
+        # TODO: ostats_x = Stats2d().summary(df_preprocessed.iloc[:, 5:-1].values)
+        ostats_x = Stats2d().summary(df_preprocessed.iloc[:, 7:-1].values)
         # y stats
-        ylabel, ycount = np.unique(df_preprocessed.iloc[:, 4], return_counts=True)
+        # TODO: ylabel, ycount = np.unique(df_preprocessed.iloc[:, 4], return_counts=True)
+        ylabel, ycount = np.unique(df_preprocessed.iloc[:, 6], return_counts=True)
         df_ystats = pd.DataFrame(np.zeros((1 + len(df_preprocessed['Group'].unique()), 1 + len(ylabel))))
         df_ystats.columns = ['Group'] + list(ylabel)
         df_ystats['Group'] = df_ystats['Group'].astype('string')
@@ -211,8 +242,10 @@ def chain_sample_group_stats(  # noqa: C901
         # Group stats
         for ig, g in enumerate(list(df_preprocessed['Group'].unique())):
             gdata = df_preprocessed[df_preprocessed['Group'] == g]
-            gstats_x = Stats2d().summary(gdata.iloc[:, 5:-1].values)
-            ylabel, ycount = np.unique(gdata.iloc[:, 4], return_counts=True)
+            # TODO: gstats_x = Stats2d().summary(gdata.iloc[:, 5:-1].values)
+            gstats_x = Stats2d().summary(gdata.iloc[:, 7:-1].values)
+            # TODO: ylabel, ycount = np.unique(gdata.iloc[:, 4], return_counts=True)
+            ylabel, ycount = np.unique(gdata.iloc[:, 6], return_counts=True)
             ycount_row = list(ycount)
             # Y stats - fill target category counts of the current group
             df_ystats.at[df_ystats.index[ig + 1], 'Group'] = str(g)
@@ -238,7 +271,8 @@ def chain_sample_group_stats(  # noqa: C901
         # Dump y stats dill (swectral private)
         dill_result_path = write_dir + ".__swectral_dill_data/.__swectral_result_summary_sample_targets_stats.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(df_ystats, open(unc_path(dill_result_path), "wb"))
+        with open(unc_path(dill_result_path), "wb") as f:
+            dill.dump(df_ystats, f)
 
         # Save X stats
         for m in list(gstats_x.keys()):
@@ -389,7 +423,29 @@ def performance_metrics_summary(  # noqa: C901
 ) -> dict[str, Any]:
     """
     Collect performance metrics from SpecPipe model evaluation reports.
-    """
+
+    Parameters
+    ----------
+    pipeline_config_dir : str
+        SpecPipe configuration directory.
+    model_evaluation_report_dir : str
+        SpecPipe model evaluation reports directory.
+
+    Returns
+    -------
+    dict
+        For classification, returns a dictionary of "is_regression", "chains_in_ID" and "macro_metrics" and "micro_metrics".
+
+        For regression, returns a dictionary of "is_regression", "chains_in_ID" and "regression_metrics" for regression.
+
+    Examples
+    --------
+    performance_metrics_summary(
+        pipeline_config_dir = "report_root/SpecPipe_configuration/",
+        model_evaluation_report_dir = "report_root/Modeling/Model_evaluation_reports/",
+    )
+    """  # noqa: E501
+
     config_dir = (pipeline_config_dir.replace("\\", "/") + "/").replace("//", "/")
     report_dir = (model_evaluation_report_dir.replace("\\", "/") + "/").replace("//", "/")
     process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
@@ -490,7 +546,8 @@ def performance_metrics_summary(  # noqa: C901
     metrics_micro = []
     metrics_macro = []
     metrics_reg = []
-    for dir_name, result_chain in zip(ordered_dir_names, ordered_result_chains):
+    print("\nCollect model performances...")
+    for dir_name, result_chain in tqdm(zip(ordered_dir_names, ordered_result_chains), total=len(ordered_dir_names)):
         # Validate result chain - all item to process IDs
         result_chain1 = []
         for proc_item in result_chain:
@@ -505,7 +562,8 @@ def performance_metrics_summary(  # noqa: C901
         # Dump dill (swectral private)
         dill_result_path = metrics_dir + ".__swectral_dill_data/.__swectral_core_result_Chain_process_info.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(df_cprocs, open(unc_path(dill_result_path), "wb"))
+        with open(unc_path(dill_result_path), "wb") as f:
+            dill.dump(df_cprocs, f)
         # Read performance metrics
         metrics_filename = [
             entry.name
@@ -593,7 +651,7 @@ def performance_metrics_summary(  # noqa: C901
 
 
 # Marginal performance statistics for regression
-def regression_performance_marginal_stats(
+def regression_performance_marginal_stats(  # noqa: C901
     metrics_dict: dict[str, Any],
     pipeline_config_dir: str,
     model_evaluation_report_dir: str,
@@ -611,83 +669,92 @@ def regression_performance_marginal_stats(
     df_cid = metrics_dict["chains_in_ID"]
     df_reg_metrics = metrics_dict["regression_metrics"]
     config_dir = pipeline_config_dir
+
+    # Load config and create a lookup dictionary
     process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Compute and output marginal perf stats of each step
     marginal_performance_stats: dict = {}
-    for step in list(df_cid.columns):
+    print("\nAnalyze marginal performance...")
+    for step in tqdm(list(df_cid.columns), total=len(list(df_cid.columns))):
         # Step process IDs
         step_process_ids = list(df_cid[step].unique())
-        # For parallel processes
-        # Step process grouped performance
-        group_r2: dict = {}
-        # Resulting df
-        step_gstats_r2 = pd.DataFrame(
-            np.zeros((len(step_process_ids) + 7, len(step_process_ids) + 2)),
-            columns=["Process_ID", "All"] + step_process_ids,
-            dtype=object,
-        )
-        step_gstats_r2["Process_ID"] = [
-            "Process_label",
-            "n_records",
-            "Mean_R2",
-            "Min_R2",
-            "Median_R2",
-            "Max_R2",
-            "All",
-        ] + step_process_ids
-        step_gstats_r2.loc[0, :] = ["Process_label", "All"] + [
-            process_id_to_label(proc_id, process_config_df, ignore=(not validate_process))
-            for proc_id in step_gstats_r2.columns[2:]
-        ]
+
+        # Group by step method
+        grouped_data = df_reg_metrics.groupby(step)["R2"].apply(list).to_dict()
+
         # Aggregate group of all records
         r2_all = list(df_reg_metrics.loc[:, "R2"])
-        group_r2['All'] = r2_all
-        # Get group stats
-        for pid in step_process_ids:
-            r2 = list(df_reg_metrics.loc[df_reg_metrics[step] == pid, "R2"])
-            group_r2[pid] = r2
-        # Compute stats and p in test for comparison
-        for pid1 in ['All'] + step_process_ids:
-            # R2 metrics
+
+        all_ids = ['All'] + step_process_ids
+        group_r2 = {'All': r2_all}
+        group_r2.update(grouped_data)
+
+        # Pre-allocate matrix for faster numpy location
+        num_stats_rows = 6
+        num_mwu_rows = len(all_ids)
+        matrix_r2 = np.empty((num_stats_rows + num_mwu_rows, len(all_ids)), dtype=object)
+
+        for col_idx, pid1 in enumerate(all_ids):
             r2_1 = group_r2[pid1]
-            step_gstats_r2.loc[1, pid1] = len(r2_1)
-            step_gstats_r2.loc[2, pid1] = np.nanmean(r2_1)
-            step_gstats_r2.loc[3, pid1] = np.nanmin(r2_1)
-            step_gstats_r2.loc[4, pid1] = np.nanmedian(r2_1)
-            step_gstats_r2.loc[5, pid1] = np.nanmax(r2_1)
-            # Mann-Whitney-U-p-Value
-            for i, pid2 in enumerate(['All'] + step_process_ids):
+
+            # Label row
+            if pid1 == 'All':
+                matrix_r2[0, col_idx] = "All"
+            else:
+                label_val = process_id_to_label(pid1, process_config_df, ignore=(not validate_process))
+                matrix_r2[0, col_idx] = label_val
+
+            # Stats rows
+            matrix_r2[1, col_idx] = len(r2_1)
+            matrix_r2[2, col_idx] = np.nanmean(r2_1)
+            matrix_r2[3, col_idx] = np.nanmin(r2_1)
+            matrix_r2[4, col_idx] = np.nanmedian(r2_1)
+            matrix_r2[5, col_idx] = np.nanmax(r2_1)
+
+            # Stat test rows
+            for row_offset, pid2 in enumerate(all_ids):
                 r2_2 = group_r2[pid2]
                 if len(step_process_ids) > 1:
-                    step_gstats_r2.loc[i + 6, pid1] = mannwhitneyu(r2_1, r2_2)[1]
+                    # Identity cases
+                    if pid1 == pid2:
+                        matrix_r2[row_offset + 6, col_idx] = 1.0
+                    else:
+                        matrix_r2[row_offset + 6, col_idx] = mannwhitneyu(r2_1, r2_2)[1]
                 else:
-                    step_gstats_r2.loc[i + 6, pid1] = np.nan
+                    matrix_r2[row_offset + 6, col_idx] = np.nan
+
+        # Construct DataFrames from matrices
+        step_gstats_r2 = pd.DataFrame(matrix_r2, columns=all_ids)
+
+        # Add Process_ID column with original string identifiers
+        desc_col = ["Process_label", "n_records", "Mean_R2", "Min_R2", "Median_R2", "Max_R2"] + all_ids
+        step_gstats_r2.insert(0, "Process_ID", desc_col)
 
         # Collect step result
         marginal_performance_stats[step] = {"r2": step_gstats_r2, "summary": df_reg_metrics}
+
         # Save step result
         if len(step_process_ids) > 1:
             step_gstats_r2.to_csv(unc_path(report_dir + f"Marginal_R2_stats_{str(step).lower()}.csv"), index=False)
-            # Dump dill (swectral private)
             dill_result_path = (
                 report_dir
                 + f".__swectral_dill_data/.__swectral_result_summary_Marginal_R2_stats_{str(step).lower()}.dill"
             )
             os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-            dill.dump(step_gstats_r2, open(unc_path(dill_result_path), "wb"))
+            with open(unc_path(dill_result_path), "wb") as f:
+                dill.dump(step_gstats_r2, f)
 
-    # Save summary results used
+    # Save summaries
     df_reg_metrics.to_csv(unc_path(report_dir + "Performance_summary.csv"), index=False)
-    # Dump dill (swectral private)
     dill_result_path = report_dir + ".__swectral_dill_data/.__swectral_result_summary_Performance_summary.dill"
     os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-    dill.dump(df_reg_metrics, open(unc_path(dill_result_path), "wb"))
+    with open(unc_path(dill_result_path), "wb") as f:
+        dill.dump(df_reg_metrics, f)
 
     return marginal_performance_stats
 
 
-# Marginal performance statistics for classification
 def classification_performance_marginal_stats(  # noqa: C901
     metrics_dict: dict[str, Any],
     pipeline_config_dir: str,
@@ -702,142 +769,141 @@ def classification_performance_marginal_stats(  # noqa: C901
     if not os.path.exists(unc_path(report_dir)):
         raise ValueError(f"Invalid 'model_evaluation_report_dir': {report_dir}")
 
-    # Get summarized metrics data and corresponding chains
     df_cid = metrics_dict["chains_in_ID"]
     df_macro_metrics = metrics_dict["macro_metrics"]
     df_micro_metrics = metrics_dict["micro_metrics"]
     config_dir = pipeline_config_dir
+
+    # Load config and create a lookup dictionary
     process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Compute and output marginal perf stats of each step
     marginal_performance_stats: dict = {}
-    for step in list(df_cid.columns):
-        # Step process IDs
+    print("\nAnalyze marginal performance...")
+    for step in tqdm(list(df_cid.columns), total=len(list(df_cid.columns))):
         step_process_ids = list(df_cid[step].unique())
-        # For parallel processes
-        # Step process grouped performance
-        group_macauc: dict = {}
-        group_micauc: dict = {}
-        # Resulting df
-        step_gstats_macauc = pd.DataFrame(
-            np.zeros((len(step_process_ids) + 7, len(step_process_ids) + 2)),
-            columns=["Process_ID", "All"] + step_process_ids,
-            dtype=object,
-        )
-        step_gstats_macauc["Process_ID"] = [
+
+        # Group by step method and convert to dict
+        grouped_macro = df_macro_metrics.groupby(step)["AUC"].apply(list).to_dict()
+        grouped_micro = df_micro_metrics.groupby(step)["AUC"].apply(list).to_dict()
+
+        all_ids = ['All'] + step_process_ids
+        group_macauc = {'All': list(df_macro_metrics["AUC"])}
+        group_macauc.update(grouped_macro)
+        group_micauc = {'All': list(df_micro_metrics["AUC"])}
+        group_micauc.update(grouped_micro)
+
+        # Pre-allocate matrix for faster numpy location
+        num_rows = 6 + len(all_ids)
+        matrix_macauc = np.empty((num_rows, len(all_ids)), dtype=object)
+        matrix_micauc = np.empty((num_rows, len(all_ids)), dtype=object)
+
+        for col_idx, pid1 in enumerate(all_ids):
+            mac_1, mic_1 = group_macauc[pid1], group_micauc[pid1]
+
+            # Label row
+            if pid1 == 'All':
+                matrix_macauc[0, col_idx] = "All"
+                matrix_micauc[0, col_idx] = "All"
+            else:
+                label_val = process_id_to_label(pid1, process_config_df, ignore=(not validate_process))
+                matrix_macauc[0, col_idx] = label_val
+                matrix_micauc[0, col_idx] = label_val
+
+            # Stats rows
+            for m, vals in [(matrix_macauc, mac_1), (matrix_micauc, mic_1)]:
+                m[1, col_idx] = len(vals)
+                m[2, col_idx] = np.nanmean(vals)
+                m[3, col_idx] = np.nanmin(vals)
+                m[4, col_idx] = np.nanmedian(vals)
+                m[5, col_idx] = np.nanmax(vals)
+
+            # Stat test rows
+            for row_offset, pid2 in enumerate(all_ids):
+                if len(step_process_ids) > 1:
+                    # Identity cases
+                    if pid1 == pid2:
+                        p_mac, p_mic = 1.0, 1.0
+                    else:
+                        p_mac = mannwhitneyu(mac_1, group_macauc[pid2])[1]
+                        p_mic = mannwhitneyu(mic_1, group_micauc[pid2])[1]
+                    matrix_macauc[row_offset + 6, col_idx] = p_mac
+                    matrix_micauc[row_offset + 6, col_idx] = p_mic
+                else:
+                    matrix_macauc[row_offset + 6, col_idx] = np.nan
+                    matrix_micauc[row_offset + 6, col_idx] = np.nan
+
+        # Construct DataFrames from matrices
+        step_gstats_macauc = pd.DataFrame(matrix_macauc, columns=all_ids)
+        step_gstats_micauc = pd.DataFrame(matrix_micauc, columns=all_ids)
+
+        # Add Process_ID column with original string identifiers
+        desc_mac = [
             "Process_label",
             "n_records",
             "Mean_AUC_macro",
             "Min_AUC_macro",
             "Median_AUC_macro",
             "Max_AUC_macro",
-            "All",
-        ] + step_process_ids
-        step_gstats_macauc.loc[0, :] = ["Process_label", "All"] + [
-            process_id_to_label(proc_id, process_config_df, ignore=(not validate_process))
-            for proc_id in step_gstats_macauc.columns[2:]
-        ]
-        step_gstats_micauc = step_gstats_macauc.copy(deep=True)
-        step_gstats_micauc.loc[2:5, "Process_ID"] = [
+        ] + all_ids
+        desc_mic = [
+            "Process_label",
+            "n_records",
             "Mean_AUC_micro",
             "Min_AUC_micro",
             "Median_AUC_micro",
             "Max_AUC_micro",
-        ]
-        # Aggregate group of all records
-        macauc_all = list(df_macro_metrics.loc[:, "AUC"])
-        group_macauc['All'] = macauc_all
-        micauc_all = list(df_micro_metrics.loc[:, "AUC"])
-        group_micauc['All'] = micauc_all
-        # Get group stats
-        for pid in step_process_ids:
-            macro_auc = list(df_macro_metrics.loc[df_macro_metrics[step] == pid, "AUC"])
-            group_macauc[pid] = macro_auc
-            micro_auc = list(df_micro_metrics.loc[df_micro_metrics[step] == pid, "AUC"])
-            group_micauc[pid] = micro_auc
-        # Compute stats and p in test for comparison
-        for pid1 in ['All'] + step_process_ids:
-            # Macro avg AUC
-            macro_auc_1 = group_macauc[pid1]
-            step_gstats_macauc.loc[1, pid1] = len(macro_auc_1)
-            step_gstats_macauc.loc[2, pid1] = np.nanmean(macro_auc_1)
-            step_gstats_macauc.loc[3, pid1] = np.nanmin(macro_auc_1)
-            step_gstats_macauc.loc[4, pid1] = np.nanmedian(macro_auc_1)
-            step_gstats_macauc.loc[5, pid1] = np.nanmax(macro_auc_1)
-            # Micro avg AUC
-            micro_auc_1 = group_micauc[pid1]
-            step_gstats_micauc.loc[1, pid1] = len(micro_auc_1)
-            step_gstats_micauc.loc[2, pid1] = np.nanmean(micro_auc_1)
-            step_gstats_micauc.loc[3, pid1] = np.nanmin(micro_auc_1)
-            step_gstats_micauc.loc[4, pid1] = np.nanmedian(micro_auc_1)
-            step_gstats_micauc.loc[5, pid1] = np.nanmax(micro_auc_1)
-            # Mann-Whiteney U-Test P value
-            for i, pid2 in enumerate(['All'] + step_process_ids):
-                if len(step_process_ids) > 1:
-                    macro_auc_2 = group_macauc[pid2]
-                    step_gstats_macauc.loc[i + 6, pid1] = mannwhitneyu(macro_auc_1, macro_auc_2)[1]
-                    micro_auc_2 = group_micauc[pid2]
-                    step_gstats_micauc.loc[i + 6, pid1] = mannwhitneyu(micro_auc_1, micro_auc_2)[1]
-                else:
-                    step_gstats_macauc.loc[i + 6, pid1] = np.nan
-                    step_gstats_micauc.loc[i + 6, pid1] = np.nan
+        ] + all_ids
 
-        # Collect step result
+        step_gstats_macauc.insert(0, "Process_ID", desc_mac)
+        step_gstats_micauc.insert(0, "Process_ID", desc_mic)
+
+        # Collect and Save logic
         marginal_performance_stats[step] = {"macro_auc": step_gstats_macauc, "micro_auc": step_gstats_micauc}
-        # Save step result
+
         if len(step_process_ids) > 1:
-            # Save macro-avg AUC
+            # Macro
             step_gstats_macauc.to_csv(
                 unc_path(report_dir + f"Marginal_macro_avg_AUC_stats_{str(step).lower()}.csv"), index=False
             )
-            # Dump dill (swectral private)
-            dill_result_path = unc_path(
+            dill_path = unc_path(
                 report_dir
                 + ".__swectral_dill_data/"
                 + f".__swectral_result_summary_Marginal_macro_avg_AUC_stats_{str(step).lower()}.dill"
-            )  # noqa: E501
-            os.makedirs(os.path.dirname(dill_result_path), exist_ok=True)
-            dill.dump(step_gstats_macauc, open(dill_result_path, "wb"))
-            # Save micro-avg AUC
-            step_gstats_micauc.to_csv(
-                unc_path(report_dir + f"Marginal_micro_avg_AUC_stats_{str(step).lower()}.csv"), index=False
             )
-            # Dump dill (swectral private)
-            dill_result_path = unc_path(
+            os.makedirs(os.path.dirname(dill_path), exist_ok=True)
+            with open(dill_path, "wb") as f:
+                dill.dump(step_gstats_macauc, f)
+            # Micro
+            step_gstats_micauc.to_csv(
+                unc_path(report_dir + f"Marginal_micro_avg_AUC_stats_{str(step).lower()}.csv"),
+                index=False,
+            )
+            dill_path = unc_path(
                 report_dir
                 + ".__swectral_dill_data/"
                 + f".__swectral_result_summary_Marginal_micro_avg_AUC_stats_{str(step).lower()}.dill"
-            )  # noqa: E501
-            os.makedirs(os.path.dirname(dill_result_path), exist_ok=True)
-            dill.dump(step_gstats_micauc, open(dill_result_path, "wb"))
+            )
+            with open(dill_path, "wb") as f:
+                dill.dump(step_gstats_micauc, f)
 
-    # Collect performance summary
-    marginal_performance_stats["macro_summary"] = df_macro_metrics
-    marginal_performance_stats["micro_summary"] = df_micro_metrics
-    # Save performance summary
-    # Save macro-avg performance
-    df_macro_metrics.to_csv(unc_path(report_dir + "Macro_avg_performance_summary.csv"), index=False)
-    # Dump dill (swectral private)
-    dill_result_path = unc_path(
-        report_dir + ".__swectral_dill_data/.__swectral_result_summary_Macro_avg_performance_summary.dill"
-    )
-    os.makedirs(os.path.dirname(dill_result_path), exist_ok=True)
-    dill.dump(df_macro_metrics, open(dill_result_path, "wb"))
-    # Save micro-avg performance
-    df_micro_metrics.to_csv(unc_path(report_dir + "Micro_avg_performance_summary.csv"), index=False)
-    # Dump dill (swectral private)
-    dill_result_path = unc_path(
-        report_dir + ".__swectral_dill_data/.__swectral_result_summary_Micro_avg_performance_summary.dill"
-    )
-    os.makedirs(os.path.dirname(dill_result_path), exist_ok=True)
-    dill.dump(df_micro_metrics, open(dill_result_path, "wb"))
+    # Save summaries
+    marginal_performance_stats.update({"macro_summary": df_macro_metrics, "micro_summary": df_micro_metrics})
+    for df_sum, prefix in [(df_macro_metrics, "Macro"), (df_micro_metrics, "Micro")]:
+        df_sum.to_csv(unc_path(report_dir + f"{prefix}_avg_performance_summary.csv"), index=False)
+        dill_path = unc_path(
+            report_dir + f".__swectral_dill_data/.__swectral_result_summary_{prefix}_avg_performance_summary.dill"
+        )
+        os.makedirs(os.path.dirname(dill_path), exist_ok=True)
+        with open(dill_path, "wb") as f:
+            dill.dump(df_sum, f)
 
     return marginal_performance_stats
 
 
 # Marginal performance statistics
 @simple_type_validator
-def performance_marginal_stats(report_directory: str) -> dict[str, Any]:
+def performance_marginal_stats(report_directory: str, metrics_dict: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """
     Compute marginal model performance statistics and summary of model performance metrics from SpecPipe model evaluation reports.
 
@@ -845,6 +911,9 @@ def performance_marginal_stats(report_directory: str) -> dict[str, Any]:
     ----------
     pipeline_config_dir : str
         Root of SpecPipe report directory.
+    metrics_dict: dict or None
+        Dictionary of performance summary from ``performance_metrics_summary``.
+        If provided, the summary is skipped. Default is None.
 
     Returns
     -------
@@ -853,7 +922,37 @@ def performance_marginal_stats(report_directory: str) -> dict[str, Any]:
     """  # noqa: E501
     pipeline_config_dir = f"{report_directory}/SpecPipe_configuration/"
     model_evaluation_report_dir = f"{report_directory}/Modeling/Model_evaluation_reports/"
-    metrics_dict = performance_metrics_summary(pipeline_config_dir, model_evaluation_report_dir)
+
+    # Validate metrics_dict
+    compute_metrics_dict: bool
+    if metrics_dict is None:
+        compute_metrics_dict = True
+    elif set(metrics_dict.keys()) == {
+        "is_regression",
+        "chains_in_ID",
+        "macro_metrics",
+        "micro_metrics",
+    }:
+        compute_metrics_dict = False
+    elif set(metrics_dict.keys()) == {
+        "is_regression",
+        "chains_in_ID",
+        "regression_metrics",
+    }:
+        compute_metrics_dict = False
+    else:
+        compute_metrics_dict = True
+        warnings.warn(
+            f"\n\nCorrupted metrics_dict, got keys: {metrics_dict.keys()}\nThe metrics_dict is recomputed.\n\n",
+            stacklevel=2,
+        )
+
+    # Summarize performance
+    if compute_metrics_dict:
+        metrics_dict = performance_metrics_summary(pipeline_config_dir, model_evaluation_report_dir)
+
+    # Compute stats
+    assert metrics_dict is not None
     if metrics_dict["is_regression"]:
         marginal_performance_stats = regression_performance_marginal_stats(
             metrics_dict, pipeline_config_dir, model_evaluation_report_dir

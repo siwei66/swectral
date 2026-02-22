@@ -32,31 +32,71 @@ from swectral.modeleva import ModelEva
 def create_sample_data_regression(
     n_samples: int = 10,
     n_validation_group: int = 0,
-) -> list[tuple[str, str, str, tuple[int], float, np.ndarray]]:
+    train_mask: bool = False,
+    test_mask: bool = False,
+    perc_mask: float = 0.2,
+) -> list[tuple[str, str, str, np.int8, np.int8, tuple[int], float, np.ndarray]]:
     """Create regression sample data."""
+    # Generate samples
     np.random.seed(66)
     X = np.random.rand(n_samples, 5)  # noqa: N806
     y = np.random.rand(n_samples)
+
+    # Validation group
     if n_validation_group == 0:
         nvg = n_samples
     else:
         nvg = n_validation_group
-    return [(f"sample_{i}", f"sample_{i}", f"vg_{i%nvg}", (5,), float(y[i]), X[i]) for i in range(n_samples)]
+
+    # Sample masks
+    tr_mask = [np.int8(1)] * n_samples
+    te_mask = [np.int8(1)] * n_samples
+    n_mask = max(int(perc_mask * n_samples), 1)
+    if train_mask:
+        tr_mask[:n_mask] = [np.int8(0)] * n_mask
+    if test_mask:
+        te_mask[-n_mask:] = [np.int8(0)] * n_mask
+
+    # Construct and return sample list
+    return [
+        (f"sample_{i}", f"sample_{i}", f"vg_{i%nvg}", te_mask[i], tr_mask[i], (5,), float(y[i]), X[i])
+        for i in range(n_samples)
+    ]
 
 
 def create_sample_data_classification(
     n_samples: int = 10,
     n_validation_group: int = 0,
-) -> list[tuple[str, str, str, tuple[int], str, np.ndarray]]:
+    train_mask: bool = False,
+    test_mask: bool = False,
+    perc_mask: float = 0.2,
+) -> list[tuple[str, str, str, np.int8, np.int8, tuple[int], str, np.ndarray]]:
     """Create classification sample data."""
+    # Generate samples
     np.random.seed(66)
     X = np.random.rand(n_samples, 5)  # noqa: N806
     y = np.random.choice(["A", "B"], size=n_samples)
+
+    # Validation group
     if n_validation_group == 0:
         nvg = n_samples
     else:
         nvg = n_validation_group
-    return [(f"sample_{i}", f"sample_{i}", f"vg_{i%nvg}", (5,), str(y[i]), X[i]) for i in range(n_samples)]
+
+    # Sample masks
+    tr_mask = [np.int8(1)] * n_samples
+    te_mask = [np.int8(1)] * n_samples
+    n_mask = max(int(perc_mask * n_samples), 1)
+    if train_mask:
+        tr_mask[:n_mask] = [np.int8(0)] * n_mask
+    if test_mask:
+        te_mask[-n_mask:] = [np.int8(0)] * n_mask
+
+    # Construct and return sample list
+    return [
+        (f"sample_{i}", f"sample_{i}", f"vg_{i%nvg}", te_mask[i], tr_mask[i], (5,), str(y[i]), X[i])
+        for i in range(n_samples)
+    ]
 
 
 def modeleva_initialization_regression(
@@ -64,9 +104,18 @@ def modeleva_initialization_regression(
     data_split: str = "5-fold",
     n_samples: int = 10,
     n_validation_group: int = 0,
+    train_mask: bool = False,
+    test_mask: bool = False,
+    perc_mask: float = 0.2,
 ) -> ModelEva:
     """Test regression model initialization."""
-    sample_list = create_sample_data_regression(n_samples, n_validation_group=n_validation_group)
+    sample_list = create_sample_data_regression(
+        n_samples=n_samples,
+        n_validation_group=n_validation_group,
+        train_mask=train_mask,
+        test_mask=test_mask,
+        perc_mask=perc_mask,
+    )
 
     model = LinearRegression()
 
@@ -92,9 +141,18 @@ def modeleva_initialization_classification(
     data_split: str = "5-fold",
     n_samples: int = 10,
     n_validation_group: int = 0,
+    train_mask: bool = False,
+    test_mask: bool = False,
+    perc_mask: float = 0.2,
 ) -> ModelEva:
     """Test classification model initialization."""
-    sample_list = create_sample_data_classification(n_samples, n_validation_group=n_validation_group)
+    sample_list = create_sample_data_classification(
+        n_samples=n_samples,
+        n_validation_group=n_validation_group,
+        train_mask=train_mask,
+        test_mask=test_mask,
+        perc_mask=perc_mask,
+    )
 
     model = LogisticRegression()
 
@@ -403,6 +461,92 @@ class TestModelEva(unittest.TestCase):
                 assert i not in group_test
 
     @staticmethod
+    def test_classifier_data_split_mask() -> None:
+        """Test data split with train and test sample mask for classifier."""
+
+        temp_dir = TestModelEva.temp_dir
+
+        # Clear test report dir
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+        # Split with train and test masks - loo
+        model_eva = modeleva_initialization_classification(
+            temp_dir, n_samples=20, data_split="loo", train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 16
+        for fold in model_eva.dsp_inds:
+            assert len(fold[1]) == 1
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+
+        # Split with train and test masks - classification train-test-split
+        model_eva = modeleva_initialization_classification(
+            temp_dir, n_samples=20, data_split="60-40-split", train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 1
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+
+        # Split with train and test masks - classification grouped train-test-split
+        model_eva = modeleva_initialization_classification(
+            temp_dir, n_samples=20, data_split="60-40-split", n_validation_group=5, train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 1
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+
+        # Split with train and test masks - classification kfold
+        model_eva = modeleva_initialization_classification(
+            temp_dir, n_samples=20, data_split="5-fold", train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 5
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+
+        # Split with train and test masks - classification grouped kfold
+        model_eva = modeleva_initialization_classification(
+            temp_dir, n_samples=20, data_split="2-fold", n_validation_group=5, train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 2
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+
+        # Split with train and test masks - classification logo
+        model_eva = modeleva_initialization_classification(
+            temp_dir, n_samples=20, data_split="loo", n_validation_group=5, train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 5
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+
+    @staticmethod
     def test_classifier_validation() -> None:
         """Test data split functionality."""
 
@@ -643,6 +787,92 @@ class TestModelEva(unittest.TestCase):
                 assert i not in group_test
 
     @staticmethod
+    def test_regressor_data_split_mask() -> None:
+        """Test data split with train and test sample mask for regressor."""
+
+        temp_dir = TestModelEva.temp_dir
+
+        # Clear test report dir
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+        # Split with train and test masks - loo
+        model_eva = modeleva_initialization_regression(
+            temp_dir, n_samples=20, data_split="loo", train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 16
+        for fold in model_eva.dsp_inds:
+            assert len(fold[1]) == 1
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+
+        # Split with train and test masks - regression train-test-split
+        model_eva = modeleva_initialization_regression(
+            temp_dir, n_samples=20, data_split="60-40-split", train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 1
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+
+        # Split with train and test masks - regression grouped train-test-split
+        model_eva = modeleva_initialization_regression(
+            temp_dir, n_samples=20, data_split="60-40-split", n_validation_group=5, train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 1
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+
+        # Split with train and test masks - regression kfold
+        model_eva = modeleva_initialization_regression(
+            temp_dir, n_samples=20, data_split="5-fold", train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 5
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+
+        # Split with train and test masks - regression grouped kfold
+        model_eva = modeleva_initialization_regression(
+            temp_dir, n_samples=20, data_split="2-fold", n_validation_group=5, train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 2
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+
+        # Split with train and test masks - regression logo
+        model_eva = modeleva_initialization_regression(
+            temp_dir, n_samples=20, data_split="loo", n_validation_group=5, train_mask=True, test_mask=True
+        )
+
+        assert model_eva.dsp_inds == []
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 5
+        for fold in model_eva.dsp_inds:
+            assert (fold[0] > 3).all()
+            assert (fold[1] < 16).all()
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+
+    @staticmethod
     def test_regressor_validation() -> None:
         """Test data split functionality."""
 
@@ -796,7 +1026,7 @@ class TestModelEva(unittest.TestCase):
 
 # %% Tests - ModelEva
 
-# TestModelEva.setUpClass()
+TestModelEva.setUpClass()
 
 # TestModelEva.test_initialization_regression()
 # TestModelEva.test_initialization_classification()

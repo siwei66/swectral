@@ -11,6 +11,9 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 # OS
 import os
 
+# Warnings
+import warnings
+
 # Basic
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -960,7 +963,9 @@ def _convert_metrics_combined_model(metrics_dict: dict, modeleva_report_dir: str
 
 # Combined model component marginal performance statistics
 @simple_type_validator
-def combined_model_marginal_stats(report_directory: str) -> dict[str, Any]:
+def combined_model_marginal_stats(
+    report_directory: str, metrics_dict: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
     """
     Compute marginal model performance statistics on combined model components of the performance metrics from SpecPipe model evaluation reports.
 
@@ -968,16 +973,52 @@ def combined_model_marginal_stats(report_directory: str) -> dict[str, Any]:
     ----------
     pipeline_config_dir : str
         Root of SpecPipe report directory.
+    metrics_dict: dict or None
+        Dictionary of performance summary from ``performance_metrics_summary``.
+        If provided, the summary is skipped. Default is None.
 
     Returns
     -------
     dict[str, Any]
         Dictionary of marginal model performance statistics on combined model components at each step.
     """  # noqa: E501
+
     pipeline_config_dir = f"{report_directory}/SpecPipe_configuration/"
     model_evaluation_report_dir = f"{report_directory}/Modeling/Model_evaluation_reports/"
-    metrics_dict = performance_metrics_summary(pipeline_config_dir, model_evaluation_report_dir)
+
+    # Validate metrics_dict
+    compute_metrics_dict: bool
+    if metrics_dict is None:
+        compute_metrics_dict = True
+    elif set(metrics_dict.keys()) == {
+        "is_regression",
+        "chains_in_ID",
+        "macro_metrics",
+        "micro_metrics",
+    }:
+        compute_metrics_dict = False
+    elif set(metrics_dict.keys()) == {
+        "is_regression",
+        "chains_in_ID",
+        "regression_metrics",
+    }:
+        compute_metrics_dict = False
+    else:
+        compute_metrics_dict = True
+        warnings.warn(
+            f"\n\nCorrupted metrics_dict, got keys: {metrics_dict.keys()}\nThe metrics_dict is recomputed.\n\n",
+            stacklevel=2,
+        )
+
+    # Summarize performance
+    if compute_metrics_dict:
+        metrics_dict = performance_metrics_summary(pipeline_config_dir, model_evaluation_report_dir)
+
+    # Add model step info
     metrics_dict_model = _convert_metrics_combined_model(metrics_dict, model_evaluation_report_dir)
+
+    # Compute stats
+    assert metrics_dict is not None
     if metrics_dict["is_regression"]:
         marginal_performance_stats = regression_performance_marginal_stats(
             metrics_dict_model, pipeline_config_dir, model_evaluation_report_dir, validate_process=False
@@ -986,6 +1027,7 @@ def combined_model_marginal_stats(report_directory: str) -> dict[str, Any]:
         marginal_performance_stats = classification_performance_marginal_stats(
             metrics_dict_model, pipeline_config_dir, model_evaluation_report_dir, validate_process=False
         )
+
     return marginal_performance_stats
 
 

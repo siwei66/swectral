@@ -23,6 +23,7 @@ import copy
 import numpy as np
 import pandas as pd
 import torch
+from copy import deepcopy
 
 # Math
 import math
@@ -103,12 +104,241 @@ def is_float(value: Any) -> bool:  # type: ignore[no-untyped-def]
         return False
 
 
+# %% Data splitter
+
+
+# Validate model validation method / data train-test split method
+@simple_type_validator
+def _val_validation_method(  # noqa: C901
+    X: np.ndarray, validation_method: str  # noqa: N803
+) -> Union[int, tuple[float, float], str]:
+    """
+    Validate validation_method
+    Choose between: "loo" / "k-fold" (e.g. "5-fold") / "m-n-split" (e.g. "70-30-split")
+    """
+    # Validate k-fold
+    if "fold" in validation_method.lower():
+        fsp = validation_method.split("-")
+        if (len(fsp) != 2) or (fsp[-1] != "fold"):
+            raise ValueError(
+                f"Invalid k-fold cross validation method, \
+                    expected format: 'k-fold' (k is the number of folds), \
+                    but got: '{validation_method}'"
+            )
+        else:
+            try:
+                k = int(fsp[0])
+            except Exception as e:
+                raise ValueError(f"'k' must be a number in k-fold cross validation, got: {fsp[0]}") from e
+            if k < 2:
+                raise ValueError(f"'k' must be at least 2 for k-fold cross validation, got: {k}")
+            elif k > X.shape[0]:
+                warnings.warn(
+                    f"Specified k = {k} is larger than sample size {X.shape[0]}, 'loo' is applied instead.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+                return "loo"
+        return k
+
+    # Validate train-test-split
+    elif "split" in validation_method.lower():
+        ttsp = validation_method.split("-")
+        if (len(ttsp) != 3) or (ttsp[-1] != "split"):
+            raise ValueError(
+                f"Invalid train-test split, \
+                    expected format: 'm-n-split' ('m' is train size, 'n' is test size), \
+                    got: '{validation_method}'"
+            )
+        else:
+            try:
+                m, n = float(ttsp[0]), float(ttsp[1])
+            except Exception as e:
+                raise ValueError(
+                    f"Invalid train-test split values. \
+                        Expected numbers for 'm' (train size) and 'n' (test size), but got: {fsp[0]}"
+                ) from e
+            if (m <= 0) | (n <= 0):
+                raise ValueError(
+                    f"m (train size) and n (test size) must be positive numbers for train-test-split, \
+                        got train size: {m}, test size: {n}"
+                )
+        return (m / (m + n), n / (m + n))
+
+    # Validate LOOCV
+    elif (validation_method.lower() == "loo") or (validation_method.lower() == "loocv"):
+        return "loo"
+
+    else:
+        raise ValueError(
+            "Unsupported validation method, \
+                validation_method must be one of: \
+                'loo' / 'k-fold' (e.g. '5-fold') / 'm-n-split' (e.g. '70-30-split')"
+        )
+
+
+# TODO: Get indices for data train-test split
+@simple_type_validator
+def _data_split_core(  # noqa: C901
+    X: np.ndarray,  # noqa: N803
+    y: np.ndarray,
+    validation_group: np.ndarray,
+    random_state: int,
+    val_method: Union[int, tuple[float, float], str],
+    is_regression: bool,
+    ynames: Optional[list[Union[str, int, bool, np.number, np.str_, np.bool_]]] = None,
+) -> list[tuple[Any, Any]]:
+    """
+    Split of train and test data for model validation.
+    """
+
+    # Validation groups
+    valgroups: np.ndarray = np.asarray(validation_group)
+    if valgroups.ndim != 1 or len(valgroups) != len(X):
+        raise ValueError("'validation_groups' must be a 1D array aligned with X")
+
+    # Get sample indices
+    indices = np.arange(len(X))
+
+    dsp_inds: list = []
+
+    # Train-test split
+    if type(val_method) is tuple:
+        # 1 Simple train-test split
+        if len(valgroups) == len(set(valgroups)):
+            train_idx, test_idx = train_test_split(
+                indices, test_size=val_method[1], random_state=random_state, shuffle=True
+            )
+            dsp_inds = [(train_idx, test_idx)]
+        # 2 Group train-test split
+        else:
+            gss = GroupShuffleSplit(
+                n_splits=1,
+                test_size=val_method[1],
+                random_state=random_state,
+            )
+            train_idx, test_idx = next(gss.split(indices, groups=valgroups))
+            dsp_inds = [(train_idx, test_idx)]
+
+    # k-Fold
+    elif type(val_method) is int:
+        if len(valgroups) == len(set(valgroups)):
+            # 3 Simple KFold for regression
+            if is_regression:
+                kf = KFold(n_splits=val_method, shuffle=True, random_state=random_state)
+                for train_idx, val_idx in kf.split(indices):
+                    dsp_inds.append((train_idx, val_idx))
+            # Stratified KFold for classification
+            else:
+                # Validate number of class
+                y_1d_arr: np.ndarray = y.reshape(-1)
+                assert ynames is not None
+                n_member_min: int = min([np.sum(y_1d_arr == yn) for yn in ynames])
+                # If number of samples/members in each class greater than number of splits
+                # 4 Stratified KFold for classification if available
+                if n_member_min >= val_method:
+                    kf = StratifiedKFold(n_splits=val_method, shuffle=True, random_state=random_state)
+                    for train_idx, val_idx in kf.split(X, y):
+                        dsp_inds.append((train_idx, val_idx))
+                # 5 Simple KFold for classification - fall back to plain KFold
+                else:
+                    warnings.warn(
+                        f"Sample number of single class {n_member_min} less than number of classes,\
+                            data split falls back to 'KFold' instead of 'StratifiedKFold'",
+                        UserWarning,
+                        stacklevel=1,
+                    )
+                    kf = KFold(n_splits=val_method, shuffle=True, random_state=random_state)
+                    for train_idx, val_idx in kf.split(indices):
+                        dsp_inds.append((train_idx, val_idx))
+        # Group k-Fold
+        else:
+            # 6 GroupKFold for regression
+            if is_regression:
+                kf = GroupKFold(n_splits=val_method)
+                for train_idx, val_idx in kf.split(indices, groups=valgroups):
+                    dsp_inds.append((train_idx, val_idx))
+            # Stratified KFold for classification
+            else:
+                # Validate number of class
+                y_1d_arr = y.reshape(-1)
+                assert ynames is not None
+                n_member_min = min([np.sum(y_1d_arr == yn) for yn in ynames])
+                # If number of samples/members in each class greater than number of splits
+                # 7 Stratified KFold for classification if available
+                if n_member_min >= val_method:
+                    kf = StratifiedGroupKFold(n_splits=val_method, shuffle=True, random_state=random_state)
+                    for train_idx, val_idx in kf.split(X, y, groups=valgroups):
+                        dsp_inds.append((train_idx, val_idx))
+                # 8 Simple GroupKFold for classification - fall back to plain GroupKFold
+                else:
+                    warnings.warn(
+                        f"Sample number of single class {n_member_min} less than number of classes,"
+                        "data split falls back to 'GroupKFold' instead of 'StratifiedGroupKFold'",
+                        UserWarning,
+                        stacklevel=1,
+                    )
+                    kf = GroupKFold(n_splits=val_method, shuffle=True, random_state=random_state)
+                    for train_idx, val_idx in kf.split(indices, groups=valgroups):
+                        dsp_inds.append((train_idx, val_idx))
+
+    # LOOCV
+    elif val_method == "loo":
+        # 9 Simple LOOCV
+        if len(valgroups) == len(set(valgroups)):
+            loo = LeaveOneOut()
+            for train_idx, val_idx in loo.split(indices):
+                dsp_inds.append((train_idx, val_idx))
+        # 10 LOGO-CV
+        else:
+            logo = LeaveOneGroupOut()
+            for train_idx, val_idx in logo.split(indices, groups=valgroups):
+                dsp_inds.append((train_idx, val_idx))
+
+    # Invalid validation_method
+    else:
+        raise ValueError(f"Unknown validation method: {val_method}")
+
+    # Output result
+    return dsp_inds
+
+
+# TODO: masked_sample_redistributer
+@simple_type_validator
+def _masked_sample_redistributer(fold_ids: dict, random_state: int) -> dict:
+    """
+    Crop fold ids in the dict mapping available fold ids of sample id i, making masked samples evenly distributed in the folds.
+    """  # noqa: E501
+    rng = np.random.default_rng(random_state)
+
+    # Map values to potential keys
+    val_to_keys: dict = {}
+    for key, values in fold_ids.items():
+        for v in values:
+            if v not in val_to_keys:
+                val_to_keys[v] = []
+            val_to_keys[v].append(key)
+
+    result: dict = {key: [] for key in fold_ids}
+
+    # Assign values
+    for v in sorted(val_to_keys.keys()):
+        possible_keys = val_to_keys[v]
+        loads = [len(result[k]) for k in possible_keys]
+        min_load = min(loads)
+        candidates = [k for k in possible_keys if len(result[k]) == min_load]
+        chosen_key = rng.choice(candidates)
+        result[chosen_key].append(v)
+
+    return result
+
+
 # %% ModelEva module
 
 # Modeling 1D input data without shape hint
 
 # Model module accepts: 0 - list of samples with arbitrary data level, 1 - ScikitLearn-style model class
-# Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
+# Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
 # Original shape is used for reading and reshape the X values in the provided model, not necessary,
 # commonly not required for spectral model, and the models all use 1D data.
 # Data shape can be provided with 1D data to enable modeling higher dimensional data within this frame.
@@ -131,9 +361,9 @@ class ModelEva:
 
     Attributes:
     -----------
-    sample_list : list[tuple[str, tuple[int, ...], Union[str,int,bool,float], np.ndarray]]
+    sample_list : list[tuple[str, str, str, np.int8, np.int8, tuple[int], Any, Annotated[Any, arraylike_validator(ndim=1)]]]
         SpecPipe sample data as list of tuples containing:
-        (sample ID, original shape, target value, predictor array)
+        (sample ID, Sample label, Validation group, Test mask, Train mask, X original shape, target value, predictor array)
 
     model : scikit-learn-style model object
         Model to evaluate. Must implement:
@@ -198,6 +428,9 @@ class ModelEva:
                 str,
                 str,
                 str,
+                # TODO: new
+                np.int8,
+                np.int8,
                 tuple[int, ...],
                 Union[str, int, bool, float],
                 Annotated[Any, arraylike_validator(ndim=1)],
@@ -230,35 +463,41 @@ class ModelEva:
 
         # Model types - regression or classification
         if is_regression is None:
-            if is_numeric(sample_list[0][4]):
+            # if is_numeric(sample_list[0][4]):
+            if is_numeric(sample_list[0][-2]):
                 is_regression = True
             else:
                 is_regression = False
         self.is_regression: bool = is_regression
 
         # Set sample data features from sample_list (must be first) for model training and evaluation
-        # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
-        # Sample data validated: (0 - Sample ids, 1 - Original shapes, 2 - Target values, 3 - Sample predictor values)
+        # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
+        # Sample data validated: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
         # (np.array(sid), tuple(xshp), np.array(y).reshape(-1,1), X)
         sample_data_structured = self._val_sample_list(sample_list)
         del sample_list
         self._sid: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[0]  # Sample ID
         self._sample_label: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[1]
         self._validation_group: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[2]
-        self._X_original_shape: tuple[int, ...] = sample_data_structured[3]
-        self._y: Annotated[Any, arraylike_validator(ndim=2)] = sample_data_structured[4]
-        self._X: Annotated[Any, arraylike_validator(ndim=2)] = sample_data_structured[5]
-        if sample_data_structured[4].dtype.kind in ("U", "S", "i", "b"):
+        # TODO: new
+        self._mask_test: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[3]
+        self._mask_train: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[4]
+        self._X_original_shape: tuple[int, ...] = sample_data_structured[-3]
+        self._y: Annotated[Any, arraylike_validator(ndim=2)] = sample_data_structured[-2]
+        self._X: Annotated[Any, arraylike_validator(ndim=2)] = sample_data_structured[-1]
+        if sample_data_structured[-2].dtype.kind in ("U", "S", "i", "b"):
             ynames = list(np.unique(self._y))
-        elif sample_data_structured[4].dtype.kind in ("i", "f"):
+        elif sample_data_structured[-2].dtype.kind in ("i", "f"):
             ynames = None
-        self._ynames: Optional[list[Union[str, int, bool]]] = ynames
+        self._ynames: Optional[list[Union[str, int, bool, np.number, np.str_, np.bool_]]] = ynames
 
         # Set model
         self._model: object = self._val_model(model)
 
         # Set validation_method
-        self._validation_method: Union[int, tuple[float, float], str] = self._val_validation_method(validation_method)
+        self._validation_method: Union[int, tuple[float, float], str] = _val_validation_method(
+            self.X, validation_method
+        )
 
         # Data split indices
         self._dsp_inds: list[tuple[Any, Any]] = []
@@ -344,6 +583,30 @@ class ModelEva:
             "use method 'update_samples' to update validation_group",
         )
 
+    # TODO: new
+    @property
+    def mask_test(self) -> Annotated[Any, arraylike_validator(ndim=1)]:
+        return self._mask_test
+
+    @mask_test.setter
+    def mask_test(self, value: Annotated[Any, arraylike_validator(ndim=1)]) -> None:
+        raise ValueError(
+            "Sample mask for testing (mask_test) cannot be modified directly,",
+            "use method 'update_samples' to update mask_test",
+        )
+
+    # TODO: new
+    @property
+    def mask_train(self) -> Annotated[Any, arraylike_validator(ndim=1)]:
+        return self._mask_train
+
+    @mask_train.setter
+    def mask_train(self, value: Annotated[Any, arraylike_validator(ndim=1)]) -> None:
+        raise ValueError(
+            "Sample mask for training (mask_train) cannot be modified directly,",
+            "use method 'update_samples' to update mask_train",
+        )
+
     @property
     def X_original_shape(self) -> tuple[int, ...]:  # noqa: N802
         return self._X_original_shape
@@ -397,7 +660,7 @@ class ModelEva:
         raise ValueError("y_pred_eva cannot be modified")
 
     @property
-    def ynames(self) -> Optional[list[Union[str, int, bool]]]:
+    def ynames(self) -> Optional[list[Union[str, int, bool, np.number, np.str_, np.bool_]]]:
         return self._ynames
 
     @ynames.setter
@@ -487,7 +750,7 @@ class ModelEva:
 
     @validation_method.setter
     def validation_method(self, validation_method: Union[int, tuple[float, float], str]) -> None:
-        self._validation_method = self._val_validation_method(validation_method)
+        self._validation_method = _val_validation_method(self.X, validation_method)
 
     @property
     def result_backup(self) -> bool:
@@ -512,6 +775,7 @@ class ModelEva:
             raise TypeError(f"silent_all must be bool, got : {value}, type: {type(value)}.")
 
     # Update sample_list data
+    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
     @simple_type_validator
     def update_samples(
         self,
@@ -520,6 +784,9 @@ class ModelEva:
                 str,
                 str,
                 str,
+                # TODO: new
+                np.int8,
+                np.int8,
                 tuple[int, ...],
                 Union[str, int, bool, float],
                 Annotated[Any, arraylike_validator(ndim=1)],
@@ -531,18 +798,21 @@ class ModelEva:
         self._sid = sample_data_structured[0]
         self._sample_label = sample_data_structured[1]
         self._validation_group = sample_data_structured[2]
-        self._X_original_shape = sample_data_structured[3]
-        self._y = sample_data_structured[4]
-        self._X = sample_data_structured[5]
+        # TODO: new
+        self._mask_test = sample_data_structured[3]
+        self._mask_train = sample_data_structured[4]
+        self._X_original_shape = sample_data_structured[-3]
+        self._y = sample_data_structured[-2]
+        self._X = sample_data_structured[-1]
         # Update ynames
-        if sample_data_structured[4].dtype.kind in ("U", "S", "i", "b"):
+        if sample_data_structured[-2].dtype.kind in ("U", "S", "i", "b"):
             ynames = list(np.unique(self._y))
-        elif sample_data_structured[4].dtype.kind in ("i", "f"):
+        elif sample_data_structured[-2].dtype.kind in ("i", "f"):
             ynames = None
         self._ynames = ynames
 
-    # Validate  and transform sample data from SpecPipe
-    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
+    # Validate and transform sample data from SpecPipe
+    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
     @simple_type_validator
     def _val_sample_list(  # noqa: C901
         self,
@@ -551,6 +821,9 @@ class ModelEva:
                 str,
                 str,
                 str,
+                # TODO: new
+                np.int8,
+                np.int8,
                 tuple[int, ...],
                 Union[str, int, bool, float],
                 Annotated[Any, arraylike_validator(ndim=1)],
@@ -558,6 +831,9 @@ class ModelEva:
         ],
     ) -> tuple[
         Annotated[np.ndarray, arraylike_validator(ndim=1)],
+        Annotated[np.ndarray, arraylike_validator(ndim=1)],
+        Annotated[np.ndarray, arraylike_validator(ndim=1)],
+        # TODO: new
         Annotated[np.ndarray, arraylike_validator(ndim=1)],
         Annotated[np.ndarray, arraylike_validator(ndim=1)],
         tuple[int, ...],
@@ -587,31 +863,31 @@ class ModelEva:
 
             # Get targets
             if i == 0:
-                y0 = st[4]
-            if self.is_regression & (not is_numeric(st[4])):
+                y0 = st[-2]
+            if self.is_regression & (not is_numeric(st[-2])):
                 raise TypeError(
                     f"Expected numeric target variable dtypes for regression models, \
-                        but got type '{type(st[4])}' at index {i}."
+                        but got type '{type(st[-2])}' at index {i}."
                 )
             elif not self.is_regression:
-                if is_float(st[4]):
+                if is_float(st[-2]):
                     raise TypeError(
-                        f"Target variable dtype cannot be float, but got type '{type(st[4])}' at index {i}."
+                        f"Target variable dtype cannot be float, but got type '{type(st[-2])}' at index {i}."
                     )
-                elif type(st[4]) is not type(y0):
+                elif type(st[-2]) is not type(y0):
                     raise TypeError(
                         f"Inconsistent target value dtypes, expected type: '{type(y0)}', \
-                            got type '{type(st[4])}' at index {i}."
+                            got type '{type(st[-2])}' at index {i}."
                     )
-            y.append(st[4])
+            y.append(st[-2])
 
             # Get original shape
             if i == 0:
-                xshp = st[3]
-            elif st[3] != xshp:
+                xshp = st[-3]
+            elif st[-3] != xshp:
                 raise TypeError(
                     f"Inconsistent predictor shape, expected shape: '{xshp}', \
-                        got shape '{st[3]}' at index {i} in the give sample_list."
+                        got shape '{st[-3]}' at index {i} in the give sample_list."
                 )
 
             # Get sample ID
@@ -633,11 +909,26 @@ class ModelEva:
             else:
                 val_group.append(st[2])
 
+            # TODO: Get y mask
+            if i == 0:
+                val_mte = [st[3]]
+            else:
+                val_mte.append(st[3])
+
+            # TODO: Get X mask
+            if i == 0:
+                val_mtr = [st[4]]
+            else:
+                val_mtr.append(st[4])
+
         # Convert and return result in tuple of np.ndarrays
         return (
             np.asarray(sid),
             np.asarray(sample_labels),
             np.asarray(val_group),
+            # TODO: new
+            np.asarray(val_mte),
+            np.asarray(val_mtr),
             tuple(xshp),
             np.asarray(y).reshape(-1, 1),
             X,
@@ -667,73 +958,6 @@ class ModelEva:
             )
 
         return model
-
-    # Validate model validation method / data train-test split method
-    @simple_type_validator
-    def _val_validation_method(self, validation_method: str) -> Union[int, tuple[float, float], str]:  # noqa: C901
-        """
-        Validate validation_method
-        Choose between: "loo" / "k-fold" (e.g. "5-fold") / "m-n-split" (e.g. "70-30-split")
-        """
-        # Validate k-fold
-        if "fold" in validation_method:
-            fsp = validation_method.split("-")
-            if (len(fsp) != 2) or (fsp[-1] != "fold"):
-                raise ValueError(
-                    f"Invalid k-fold cross validation method, \
-                        expected format: 'k-fold' (k is the number of folds), \
-                        but got: '{validation_method}'"
-                )
-            else:
-                try:
-                    k = int(fsp[0])
-                except Exception as e:
-                    raise ValueError(f"{e}\nk must be a number in k-fold cross validation, got: {fsp[0]}") from e
-                if k < 2:
-                    raise ValueError(f"k must be at least 2 for k-fold cross validation, got: {k}")
-                elif k > self._X.shape[0]:
-                    warnings.warn(
-                        f"Specified k = {k} is larger than sample size {self._X.shape[0]}, 'loo' is applied instead.",
-                        UserWarning,
-                        stacklevel=3,
-                    )
-                    return "loo"
-            return k
-
-        # Validate train-test-split
-        elif "split" in validation_method:
-            ttsp = validation_method.split("-")
-            if (len(ttsp) != 3) or (ttsp[-1] != "split"):
-                raise ValueError(
-                    f"Invalid train-test split, \
-                        expected format: 'm-n-split' ('m' is train size, 'n' is test size), \
-                        got: '{validation_method}'"
-                )
-            else:
-                try:
-                    m, n = float(ttsp[0]), float(ttsp[1])
-                except Exception as e:
-                    raise ValueError(
-                        f"{e}\nInvalid train-test split values. \
-                            Expected numbers for 'm' (train size) and 'n' (test size), but got: {fsp[0]}"
-                    ) from e
-                if (m <= 0) | (n <= 0):
-                    raise ValueError(
-                        f"m (train size) and n (test size) must be positive numbers for train-test-split, \
-                            got train size: {m}, test size: {n}"
-                    )
-            return (m / (m + n), n / (m + n))
-
-        # Validate LOOCV
-        elif (validation_method.lower() == "loo") or (validation_method.lower() == "loocv"):
-            return "loo"
-
-        else:
-            raise ValueError(
-                "Unsupported validation method, \
-                    validation_method must be one of: \
-                    'loo' / 'k-fold' (e.g. '5-fold') / 'm-n-split' (e.g. '70-30-split')"
-            )
 
     # Sample ID to sample label
     @simple_type_validator
@@ -766,7 +990,7 @@ class ModelEva:
             else:
                 raise ValueError(f"Dimension of give sample ID series must be 1, got: {sid_arr.ndim}")
 
-    # Get indices for data train-test split
+    # TODO: new
     @overload
     def _data_split(
         self,
@@ -785,7 +1009,6 @@ class ModelEva:
         return_ids: Literal[True] = True,
     ) -> list[tuple[Any, Any]]: ...
 
-    # Get indices for data train-test split
     @simple_type_validator
     def _data_split(  # noqa: C901
         self,
@@ -795,7 +1018,11 @@ class ModelEva:
         return_ids: bool = False,
     ) -> Union[None, list[tuple[Any, Any]]]:
         """
-        Split of train and test data for model validation.
+        Splits data with independent strategies for Training and Testing.
+        If sample mask exists for training, the training-only samples are used in every training dataset.
+        If sample mask exists for testing, the testing-only samples are evenly distributed in the testing datasets.
+        For LOOCV, folds testing training-only sample are directly dropped after splitting,
+        and the test-only samples are removed from trainsets.
         """
         # Set random state
         if random_state is None:
@@ -804,115 +1031,149 @@ class ModelEva:
         # Validation method
         val_method: Union[int, tuple[float, float], str]
         if validation_method is None:
-            val_method = self._validation_method
+            val_method = self.validation_method
         else:
-            val_method = self._val_validation_method(validation_method)
+            val_method = _val_validation_method(self.X, validation_method)
 
-        # Validation groups
-        valgroups: np.ndarray = np.asarray(self._validation_group)
-        if valgroups.ndim != 1 or len(valgroups) != len(self._X):
-            raise ValueError("'validation_groups' must be a 1D array aligned with X")
+        n_samples = len(self.X)
 
-        # Get sample indices
-        indices = np.arange(len(self._X))
+        # Get sample mask
+        train_mask = self.mask_train
+        test_mask = self.mask_test
+        tr_mask = np.asarray(train_mask if train_mask is not None else np.ones(n_samples, bool)).astype(bool)
+        te_mask = np.asarray(test_mask if test_mask is not None else np.ones(n_samples, bool)).astype(bool)
 
-        dsp_inds: list = []
+        # Validate whether mask applied
+        if (te_mask == np.ones(n_samples, bool)).all() and (tr_mask == np.ones(n_samples, bool)).all():
+            skip_mask: bool = True
+        else:
+            skip_mask = False
 
-        # Train-test split
-        if type(val_method) is tuple:
-            if len(valgroups) == len(set(valgroups)):
-                train_idx, test_idx = train_test_split(
-                    indices, test_size=val_method[1], random_state=random_state, shuffle=True
-                )
-                dsp_inds = [(train_idx, test_idx)]
-            # Group train-test split
-            else:
-                gss = GroupShuffleSplit(
-                    n_splits=1,
-                    test_size=val_method[1],
+        # Apply train test mask ========================================================================================
+        if not skip_mask:
+
+            # For non-LOO appending approach
+            if not (
+                val_method == "loo" and len(set(self.validation_group[te_mask])) == len(self.validation_group[te_mask])
+            ):
+
+                # Get shared mask-on samples ---------------------------------------------------------------------------
+                shared_mask = te_mask * tr_mask
+
+                # Train-only mask
+                mask_tr_only = tr_mask * (~te_mask)
+                if np.sum(mask_tr_only) > 0:
+                    mask_tr = True
+                    tr_only_ids = np.where(mask_tr_only)[0]
+                else:
+                    mask_tr = False
+
+                # Test-only mask
+                mask_te_only = te_mask * (~tr_mask)
+                if np.sum(mask_te_only) > 0:
+                    mask_te = True
+                    te_only_ids = np.where(mask_te_only)[0]
+                else:
+                    mask_te = False
+
+                # Original IDs to shared set IDs
+                ids = np.array(range(len(self.X)))
+                ids_shared = ids[shared_mask]
+
+                # Apply masks
+                X_shared = self.X[shared_mask]  # noqa: N806
+                y_shared = self.y[shared_mask]
+                val_group_shared = self.validation_group[shared_mask]
+
+                # Create splitted data for shared mask-on samples ------------------------------------------------------
+                dsp_inds_shared = _data_split_core(
+                    X=X_shared,
+                    y=y_shared,
+                    validation_group=val_group_shared,
                     random_state=random_state,
+                    val_method=val_method,
+                    is_regression=self.is_regression,
+                    ynames=self.ynames,
                 )
-                train_idx, test_idx = next(gss.split(indices, groups=valgroups))
-                dsp_inds = [(train_idx, test_idx)]
 
-        # k-Fold
-        elif type(val_method) is int:
-            if len(valgroups) == len(set(valgroups)):
-                if self.is_regression:
-                    kf = KFold(n_splits=val_method, shuffle=True, random_state=random_state)
-                    for train_idx, val_idx in kf.split(indices):
-                        dsp_inds.append((train_idx, val_idx))
-                else:
-                    # Validate number of class
-                    y_1d_arr: np.ndarray = self.y.reshape(-1)
-                    assert self.ynames is not None
-                    n_member_min: int = min([np.sum(y_1d_arr == yn) for yn in self.ynames])
-                    # If number of samples/members in each class greater than number of splits
-                    # StratifiedKFold if available
-                    if n_member_min >= val_method:
-                        kf = StratifiedKFold(n_splits=val_method, shuffle=True, random_state=random_state)
-                        for train_idx, val_idx in kf.split(self.X, self.y):
-                            dsp_inds.append((train_idx, val_idx))
-                    # Fall back to plain KFold
-                    else:
-                        warnings.warn(
-                            f"Sample number of single class {n_member_min} less than number of classes,\
-                                data split falls back to 'KFold' instead of 'StratifiedKFold'",
-                            UserWarning,
-                            stacklevel=1,
+                # Append the rest masked train or test-only samples ----------------------------------------------------
+                dsp_inds = deepcopy(dsp_inds_shared)
+                ids_fold_dist: dict = {}
+                for i, ttpair in enumerate(dsp_inds_shared):
+                    ids_tr = ids_shared[ttpair[0]]
+                    ids_te = ids_shared[ttpair[1]]
+                    # Append train-only samples
+                    if mask_tr:
+                        tr_only_ids_i = np.array(
+                            [
+                                ind
+                                for ind in tr_only_ids
+                                if self.validation_group[ind] not in set(self.validation_group[ids_te])
+                            ]
                         )
-                        kf = KFold(n_splits=val_method, shuffle=True, random_state=random_state)
-                        for train_idx, val_idx in kf.split(indices):
-                            dsp_inds.append((train_idx, val_idx))
-            # Group k-Fold
-            else:
-                if self.is_regression:
-                    kf = GroupKFold(n_splits=val_method)
-                    for train_idx, val_idx in kf.split(indices, groups=valgroups):
-                        dsp_inds.append((train_idx, val_idx))
-                else:
-                    # Validate number of class
-                    y_1d_arr = self.y.reshape(-1)
-                    assert self.ynames is not None
-                    n_member_min = min([np.sum(y_1d_arr == yn) for yn in self.ynames])
-                    # If number of samples/members in each class greater than number of splits
-                    # StratifiedGroupKFold if available
-                    if n_member_min >= val_method:
-                        kf = StratifiedGroupKFold(n_splits=val_method, shuffle=True, random_state=random_state)
-                        for train_idx, val_idx in kf.split(self.X, self.y, groups=valgroups):
-                            dsp_inds.append((train_idx, val_idx))
-                    # Fall back to plain GroupKFold
-                    else:
-                        warnings.warn(
-                            f"Sample number of single class {n_member_min} less than number of classes,"
-                            "data split falls back to 'GroupKFold' instead of 'StratifiedGroupKFold'",
-                            UserWarning,
-                            stacklevel=1,
+                        ids_tr = np.concatenate([ids_tr, tr_only_ids_i])
+                    # Append test-only samples
+                    if mask_te:
+                        te_only_ids_i = np.array(
+                            [
+                                ind
+                                for ind in te_only_ids
+                                if self.validation_group[ind] not in set(self.validation_group[ids_tr])
+                            ]
                         )
-                        kf = GroupKFold(n_splits=val_method, shuffle=True, random_state=random_state)
-                        for train_idx, val_idx in kf.split(indices, groups=valgroups):
-                            dsp_inds.append((train_idx, val_idx))
+                        ids_te = np.concatenate([ids_te, te_only_ids_i]).astype(int)
+                        ids_fold_dist[i] = te_only_ids_i.tolist()
+                    dsp_inds[i] = (ids_tr, ids_te)
 
-        # LOOCV
-        elif val_method == "loo":
-            if len(valgroups) == len(set(valgroups)):
-                loo = LeaveOneOut()
-                for train_idx, val_idx in loo.split(indices):
-                    dsp_inds.append((train_idx, val_idx))
-            # LOGO-CV
+                ids_fold_redist = _masked_sample_redistributer(fold_ids=ids_fold_dist, random_state=random_state)
+
+                # Correct test IDs
+                for k in list(ids_fold_dist.keys()):
+                    ids_tr = dsp_inds[k][0]
+                    ids_te = ids_shared[dsp_inds_shared[k][1]]
+                    te_only_redist = np.array(ids_fold_redist[k])
+                    ids_te = np.concatenate([ids_te, te_only_redist]).astype(int)
+                    dsp_inds[k] = (ids_tr, ids_te)
+
+            # For LOO fold-filter approach =============================================================================
             else:
-                logo = LeaveOneGroupOut()
-                for train_idx, val_idx in logo.split(indices, groups=valgroups):
-                    dsp_inds.append((train_idx, val_idx))
+                dsp_inds_raw = _data_split_core(
+                    X=self.X,
+                    y=self.y,
+                    validation_group=self.validation_group,
+                    random_state=random_state,
+                    val_method=val_method,
+                    is_regression=self.is_regression,
+                    ynames=self.ynames,
+                )
+                # Filter folds
+                dsp_inds = []
+                for ttpair in dsp_inds_raw:
+                    tr_ids = ttpair[0]
+                    tr_ids1 = np.asarray([tr_id for tr_id in tr_ids if tr_mask[tr_id]])
+                    te_ids = ttpair[1]
+                    if te_mask[te_ids[0]]:
+                        dsp_inds.append((tr_ids1, te_ids))
 
-        # Invalid validation_method
+        # No mask ======================================================================================================
         else:
-            raise ValueError(f"Unknown validation method: {self._validation_method}")
+            dsp_inds = _data_split_core(
+                X=self.X,
+                y=self.y,
+                validation_group=self.validation_group,
+                random_state=random_state,
+                val_method=val_method,
+                is_regression=self.is_regression,
+                ynames=self.ynames,
+            )
 
-        # Output result
+        # Update data split IDs
         if update_ids:
             self._dsp_inds = dsp_inds
+
+        # Output
         if return_ids:
+            assert isinstance(dsp_inds, list)
             return dsp_inds
         else:
             return None
@@ -973,7 +1234,7 @@ class ModelEva:
         sid_eva = []
 
         for train_ind, test_ind in dsps:
-            if type(self._validation_method) is tuple:
+            if type(self.validation_method) is tuple:
                 if not self.silent_all:
                     print("Model training ...")
             else:
@@ -1481,7 +1742,7 @@ class ModelEva:
             assert y_true_proba is not None
             assert y_pred_proba is not None
         except Exception as e:
-            raise ValueError(f"Incomplete validation data: {e}") from e
+            raise ValueError("Incomplete validation data") from e
 
         # Probability residuals
         res = y_true_proba - y_pred_proba
@@ -1975,7 +2236,7 @@ class ModelEva:
         itr = 0
         sid_eva = []
         for train_ind, test_ind in dsps:
-            if type(self._validation_method) is tuple:
+            if type(self.validation_method) is tuple:
                 if not self.silent_all:
                     print("Model training ...")
             else:

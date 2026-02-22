@@ -24,7 +24,7 @@ import unittest
 from unittest.mock import patch
 
 # Typing
-from typing import Annotated, Any, Callable, Optional, Union
+from typing import Annotated, Any, Callable, Optional, Union, Literal
 from pydantic import BaseModel
 
 # Basic data
@@ -304,6 +304,22 @@ class TestSimpleTypeValidator:
             test_func(42, "a")
 
     @staticmethod
+    def test_literal_types() -> None:
+        """Test Literal types with validators"""
+
+        @simple_type_validator
+        def test_func(v: Literal["a", "b", "c"]) -> str:  # type: ignore[type-arg]
+            return f"{v}"
+
+        # Valid calls
+        assert test_func("a") == "a"
+        assert test_func("c") == "c"
+
+        # Invalid calls
+        with pytest.raises(TypeError):
+            test_func("d")
+
+    @staticmethod
     def test_return_type_not_validated() -> None:
         """Test that return type is not validated (only parameters are validated)"""
 
@@ -477,6 +493,7 @@ class TestSimpleTypeValidator:
 # TestSimpleTypeValidator.test_set_types()
 
 # TestSimpleTypeValidator.test_annotated_types()
+# TestSimpleTypeValidator.test_literal_types()
 
 # TestSimpleTypeValidator.test_nested_containers()
 # TestSimpleTypeValidator.test_complex_nested_containers()

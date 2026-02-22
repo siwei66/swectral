@@ -1715,9 +1715,11 @@ class TestSpecPipe(unittest.TestCase):
         # Test preprocessing with error break
         os.environ["SPECPIPE_PREPROCESS_RESUME_TEST_NUM"] = "1"
         pipe.__tested = True  # skip test_run
-        with pytest.raises(ValueError, match="Preprocessing resume test raise"):
+        with pytest.raises(ValueError) as excinfo:
             pipe.preprocessing(resume=True)
-            # time.sleep(0.1)
+            time.sleep(0.1)
+        assert isinstance(excinfo.value.__cause__, ValueError)
+        assert "Preprocessing resume test raise" in str(excinfo.value.__cause__)
 
         # Assert step result files with break
         test_dir = pipe.report_directory
@@ -1775,9 +1777,11 @@ class TestSpecPipe(unittest.TestCase):
         # Test modeling with error break
         os.environ["SPECPIPE_MODEL_RESUME_TEST_NUM"] = "1"
         pipe.__tested = True  # skip test_run
-        with pytest.raises(ValueError, match="Modeling resume test raise"):
+        with pytest.raises(ValueError) as excinfo:
             pipe.model_evaluation(resume=True)
             time.sleep(0.1)
+        assert isinstance(excinfo.value.__cause__, ValueError)
+        assert "Modeling resume test raise" in str(excinfo.value.__cause__)
 
         # Result dir paths
         test_dir = pipe.report_directory
@@ -1842,9 +1846,11 @@ class TestSpecPipe(unittest.TestCase):
         # Test modeling with error break
         os.environ["SPECPIPE_MODEL_RESUME_TEST_NUM"] = "1"
         pipe.__tested = True  # skip test_run
-        with pytest.raises(ValueError, match="Modeling resume test raise"):
+        with pytest.raises(ValueError) as excinfo:
             pipe.model_evaluation(resume=True)
             time.sleep(0.1)
+        assert isinstance(excinfo.value.__cause__, ValueError)
+        assert "Modeling resume test raise" in str(excinfo.value.__cause__)
 
         # Result dir paths
         test_dir = pipe.report_directory

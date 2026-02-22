@@ -161,6 +161,15 @@ def simple_type_validator(func: Callable) -> Callable:  # type: ignore[no-untype
                         return False, err_msg
                 return True, err_msg
 
+            # Handle Literal["val", ...]
+            if origin is Literal:
+                allowed_values = get_args(expected_type)
+                if value in allowed_values:
+                    return True, err_msg
+                else:
+                    err_msg = f"\n\nValue must be one of {allowed_values}"
+                    return False, err_msg
+
             # Handle unrecognized types
             return isinstance(value, origin), err_msg
 

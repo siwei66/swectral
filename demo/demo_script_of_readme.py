@@ -35,8 +35,10 @@ report_dir = demo_dir + "/demo_results_classification/"
 os.makedirs(report_dir)
 
 
-# %%
+# %% Configuration and computation
+
 # 2. Configure your experiment data
+
 # 2.1 Create a spectral experiment
 # Create a SpecExp instance for experiment data
 from swectral import SpecExp
@@ -45,6 +47,7 @@ exp = SpecExp(report_dir)
 
 # Check report directory
 exp.report_directory
+
 
 # 2.2. Experiment group management
 # Add experiment groups
@@ -65,6 +68,7 @@ exp.add_images_by_name("demo.", data_dir, "group_2")
 
 # Check added images
 exp.ls_images()
+
 
 # 2.4. Region of interest (ROI) management
 # Load image ROIs using suffix to image names
@@ -89,6 +93,7 @@ exp.ls_rois_sample()
 # Show raster RGB preview with associated ROIs
 exp.show_image("demo.tiff", "group_1", rgb_band_index=(19, 12, 6), output_path=report_dir + "demo_rast_rgb1.png")
 exp.show_image("demo.tiff", "group_2", rgb_band_index=(19, 12, 6), output_path=report_dir + "demo_rast_rgb2.png")
+
 
 # 2.5. Sample labels and target values
 
@@ -231,9 +236,6 @@ pipe.ls_model()
 # Check processing chains with method id
 pipe.ls_chains()
 
-
-# %% One-shot run barrier for Windows
-
 # Run pipeline
 pipe.run()
 
@@ -258,8 +260,6 @@ len(chain_results)
 chain_results[0].keys()
 chain_results[0]['ROC_curve']
 
-
-# %% One-shot run barrier for Windows
 
 # 6 Regression Case
 
@@ -334,11 +334,10 @@ for model in models_reg:
 # Check models
 pipe_reg.ls_model()
 
+
 # 6.4 Check and run new pipeline
 # Check processing chains and run the pipeline
 pipe_reg.ls_chains()
-
-# %% One-shot run barrier for Windows
 
 # Run regression pipeline
 pipe_reg.run()

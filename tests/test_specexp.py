@@ -731,8 +731,9 @@ class TestSpecExp(unittest.TestCase):
                 "Label": targets["Label"],
                 "Target_value": [1.0] * len(targets),
                 "Group": ["test_group"] * len(targets),
-                # TODO: new
                 "Validation_group": targets["Sample_ID"],
+                "Test": [1] * len(targets),
+                "Train": [1] * len(targets),
             }
         )
 

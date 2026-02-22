@@ -36,15 +36,30 @@ global ModelEva
 
 
 # Target value type fixing after serialization
-# Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
+# Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
 @simple_type_validator
 def _target_type_validation_for_serialization(
-    # pc_sample_list: list[tuple[str, tuple[int], Any, Annotated[Any, arraylike_validator(ndim=1)]]],
-    pc_sample_list: list[tuple[str, str, str, tuple[int], Any, Annotated[Any, arraylike_validator(ndim=1)]]],
-) -> list[tuple[str, str, str, tuple[int], Union[str, int, bool, float], Annotated[Any, arraylike_validator(ndim=1)]]]:
+    # TODO: pc_sample_list: list[tuple[str, str, str, tuple[int], Any, Annotated[Any, arraylike_validator(ndim=1)]]],
+    pc_sample_list: list[
+        tuple[str, str, str, np.int8, np.int8, tuple[int], Any, Annotated[Any, arraylike_validator(ndim=1)]]
+    ],
+    # TODO: ) -> list[tuple[str, str, str, tuple[int], Union[str, int, bool, float], Annotated[Any, arraylike_validator(ndim=1)]]]:  # noqa: E501
+) -> list[
+    tuple[
+        str,
+        str,
+        str,
+        np.int8,
+        np.int8,
+        tuple[int],
+        Union[str, int, bool, float],
+        Annotated[Any, arraylike_validator(ndim=1)],
+    ]
+]:
     """Fix typing for integer after dill serialization."""
     for loaded_i, loaded_sample in enumerate(pc_sample_list):
-        loaded_y = loaded_sample[4]
+        # TODO: loaded_y = loaded_sample[4]
+        loaded_y = loaded_sample[6]
         # Behavior check to fix type
         test_value_y = loaded_y
         try:
@@ -63,8 +78,12 @@ def _target_type_validation_for_serialization(
             loaded_sample[1],
             loaded_sample[2],
             loaded_sample[3],
-            loaded_y,
+            # TODO: new
+            loaded_sample[4],
             loaded_sample[5],
+            loaded_y,
+            # TODO: loaded_sample[5],
+            loaded_sample[7],
         )
     return pc_sample_list
 
@@ -526,7 +545,7 @@ def _process_validator(  # noqa: C901
                     assert hasattr(method, '__name__')
                     raise ValueError(
                         f"Failed to open resulting raster image of {method.__name__}.\
-                            \nGot path:\n{result}, \nError msg:{e}"
+                            \nGot path:\n{result}\n"
                     ) from e
             else:
                 raise ValueError(f"Resulting file path is invalid: {result}")

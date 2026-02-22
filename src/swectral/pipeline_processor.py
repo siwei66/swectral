@@ -460,6 +460,9 @@ def _preprocessing_sample(  # noqa: C901
             "target": sample_data["target"],
             "sample_label": sample_data["label"],
             "validation_group": sample_data["validation_group"],
+            # TODO: new
+            "test": sample_data["test"],
+            "train": sample_data["train"],
             "status_results": status_results,
         }
 
@@ -529,7 +532,7 @@ def _preprocessing_sample(  # noqa: C901
         err_msg = f"Failed in the preprocessing of '{sample_data_label}', error message: \n\n{str(e)}"
         with open(unc_path(error_log_path), "w") as f:
             f.write(err_msg)
-        raise ValueError(e) from e
+        raise ValueError(f"Failed in the preprocessing of '{sample_data_label}'") from e
 
 
 # Chain step iterating processor
@@ -639,7 +642,7 @@ def _chain_step_processor(  # noqa: C901
                     )
                     raise ValueError(
                         f"\nTest failed for chain: \nChain index: {chain_ind}, \nChain: {chain};\
-                            \n\nProcess ID: {step}, \nProcess item: {method_item_out}, \n\nError message: \n{e}"
+                            \n\nProcess ID: {step}, \nProcess item: {method_item_out}\n\n"
                     ) from e
 
             # Update step_procs reference for next iteration
@@ -959,6 +962,7 @@ class _ModelMethod:
         self.residual_plot_config = residual_plot_config
         self.influence_analysis_config = influence_analysis_config
 
+    # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
     @simple_type_validator
     def evaluation(
         self,
@@ -967,6 +971,9 @@ class _ModelMethod:
                 str,
                 str,
                 str,
+                # TODO: new
+                np.int8,
+                np.int8,
                 tuple[int],
                 Union[str, int, bool, float],
                 Annotated[Any, arraylike_validator(ndim=1)],
@@ -1030,7 +1037,7 @@ class _ModelMethod:
 
 # Run modeling on single dataset
 # Notes: different from '_test_model',
-# Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
+# Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
 @simple_type_validator
 def _model_evaluator(  # noqa: C901
     preprocess_result: list[
@@ -1038,6 +1045,9 @@ def _model_evaluator(  # noqa: C901
             str,
             str,
             str,
+            # TODO: new
+            np.int8,
+            np.int8,
             tuple[int],
             Union[str, int, bool, float],
             Annotated[Any, arraylike_validator(ndim=1)],
@@ -1097,7 +1107,7 @@ def _model_evaluator(  # noqa: C901
     if sample_list_label == "":
         if update_progress_log:
             raise ValueError(
-                "Consistent and unique sample_list_label must be provided \
+                "Consistent and unique preprocessing chain label (sample_list_label) must be provided \
                     if update_progress_log set True for enabling break resuming."
             )
         sample_list_label = str(time.time_ns())[4:-2] + str(os.getpid())
@@ -1146,7 +1156,7 @@ def _model_evaluator(  # noqa: C901
                     \nInput step data ID: {sample_list[0]}\nModel label: {modelit[1]}"
             )
         # Modeling
-        # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Original shape, 4 - Target value, 5 - Sample predictor value)  # noqa: E501
+        # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
         if dl_in_ind == 7:
             # Regression
             if model_methodi.is_regression:
@@ -1179,7 +1189,7 @@ def _model_evaluator(  # noqa: C901
                 modeling_progress_log.append(preprocess_chain)
             else:
                 warnings.warn(
-                    f"Sample_list_label must be unique, got duplicated label: {sample_list_label}",
+                    f"Preprocessing chain label (sample_list_label) must be unique, got duplicated label: {sample_list_label}",  # noqa: E501
                     UserWarning,
                     stacklevel=3,
                 )
@@ -1257,4 +1267,4 @@ def _model_evaluator_mp(
         err_msg = f"\nFailed in the modeling of preprocessing chain from path '{cdp}', error message: \n\n{str(e)}\n"
         with open(unc_path(error_log_path), "w") as f:
             f.write(err_msg)
-        raise ValueError(e) from e
+        raise ValueError(f"\nFailed in the modeling of preprocessing chain from path '{cdp}'") from e
