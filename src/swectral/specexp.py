@@ -9,6 +9,7 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 import os
 from pathlib import Path
 import dill
+from copy import deepcopy
 
 # Warning
 import warnings
@@ -23,6 +24,9 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+# Interface
+from tqdm import tqdm
+
 # Local
 from .specio import (
     arraylike_validator,
@@ -35,6 +39,7 @@ from .specio import (
     unc_path,
 )
 from .specexp_vis import raster_rgb_preview
+from .sample_aug import resample_roi
 
 
 # %% Spectral Experiment Class - SpecExp
@@ -258,11 +263,13 @@ class SpecExp:
         self._images_data: list[tuple[str, str, str, str, str]] = []
         self._images_mask: list[tuple[str, str, str, str, str]] = []
 
-        # ROI I/O - file-loaded ROIs & console-added ROIs
+        # ROI I/O
+        # File-loaded ROIs - ROIs from file
         # [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs, 6 ROI file name, 7 ROI file path]  # noqa: E501
         self._rois_from_file: list[
             tuple[str, str, str, str, str, list[list[tuple[Union[int, float], Union[int, float]]]], str, str]
         ] = []
+        # Console-added ROIs - ROIs from coordinates
         # [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs]
         self._rois_from_coords: list[
             tuple[str, str, str, str, str, list[list[tuple[Union[int, float], Union[int, float]]]]]
@@ -2192,6 +2199,9 @@ class SpecExp:
         image_name: str,
         group: str,
         as_mask: bool = False,
+        print_update: bool = True,
+        *,
+        _roi_id: Optional[str] = None,  # Specify ROI ID
     ) -> None:
         """
         Add a (multi-)polygon ROI to a raster image using vertex coordinates.
@@ -2225,6 +2235,10 @@ class SpecExp:
             If True, the added ROI is labeled as a mask.
             If False, the added ROI is labeled as a sample.
             Default is False.
+
+        print_update : bool, optional
+            If True, prints the ROI update report. Set to False to suppress the update report.
+            Defaults to True.
 
         Examples
         --------
@@ -2287,7 +2301,10 @@ class SpecExp:
             vertex_coordinate_pair_lists1.append(coordlist1)
 
         # Construct ROI item
-        roi_id = "Console-added-ROI_" + group_name + "_" + image_name.replace(".", "-") + "_" + roi_name
+        if _roi_id is None:
+            roi_id = "Console-added-ROI_" + group_name + "_" + image_name.replace(".", "-") + "_" + roi_name
+        else:
+            roi_id = _roi_id
 
         # Update rois_from_coords
         new_roic_item = (
@@ -2307,8 +2324,9 @@ class SpecExp:
                     self._rois_from_coords[i] = new_roic_item
 
         # Print report
-        print("\nFollowing ROI item added or updated:\n")
-        self._df_roic([new_roic_item])
+        if print_update:
+            print("\nFollowing ROI item added or updated:\n")
+            self._df_roic([new_roic_item])
 
         # Update ROIs
         self._update_roi()
@@ -3395,6 +3413,118 @@ class SpecExp:
 
         # Update sample labels & targets
         self._update_sample_labels_targets()
+
+    # TODO: ROI subset augmentation
+    # rois_sample: [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs]
+    # sample_targets: [0 fixed sample id, 1 user assinged labels, 2 target values, 3 sample belonging group, 4 validation group, 5 test mask, 6 train mask]  # noqa: E501
+    @simple_type_validator
+    def roi_subset_augmentation(
+        self,
+        n_sub: int,
+        resolution: Union[int, float],
+        coverage_ratio: float,
+        random_state: Optional[int] = None,
+    ) -> None:
+        """
+        Perform spatial subset augmentation on the ROI data.
+
+        This method can only be applied on completely configured SpecExp instance.
+
+        The method generates multiple synthetic spatial subsets from the original ROIs and automatically updates the related data.
+        The generated sub-ROIs shares the same target value as the original sample ROI.
+
+        Parameters
+        ----------
+        n_sub : int
+            The number of augmented synthetic data points (subsets) to generate for each sample ROI.
+        resolution : int or float
+            The side length of the square grid cells used for sampling.
+            This effectively defines the spatial grain of the augmentation.
+        coverage_ratio : float
+            The target fraction of the total original ROI area to retain in each augmented sample.
+            Must be a value between 0.0 and 1.0.
+        random_state : int, optional
+            Seed for the internal NumPy random number generator to ensure reproducibility.
+            Default is None.
+
+        Examples
+        --------
+        >>> exp.roi_subset_augmentation(
+        ...     n_sub=5,
+        ...     resolution=2,
+        ...     coverage_ratio=0.3,
+        ...     random_state=42
+        ... )
+        """  # noqa: E501
+
+        # Validate random state
+        if random_state is None:
+            random_state = np.random.randint(0, np.iinfo(np.int32).max)
+
+        # Validate n_sub
+        if n_sub < 1:
+            raise ValueError(f"n_sub must be at least 1, got: {n_sub}")
+
+        # Validate self configured
+        try:
+            _spec_exp_validator(self)
+        except Exception as e:
+            raise ValueError(
+                "SpecExp configuration is incomplete. "
+                + "Complete the configuration before performing ROI subset augmentation."
+            ) from e
+
+        # Loop existed ROIs
+        print("\n\nApply ROI stohastic spatial subset augmentation...")
+        for roit in tqdm(self.rois_sample, total=len(self.rois_sample)):
+            # Look for target item
+            target_it = [tit for tit in self.sample_targets if tit[0] == roit[0]][0]
+            # Copy old targets
+            targets_old = deepcopy(self.sample_targets)
+            # Generate subset coordinates
+            coords = roit[-1]
+            subcoords_list = [
+                resample_roi(
+                    coord_lists=coords,
+                    resolution=resolution,
+                    coverage_ratio=coverage_ratio,
+                    random_state=random_state + k,
+                )
+                for k in range(n_sub)
+            ]
+            # Add new ROIs
+            for k, subcoords in enumerate(subcoords_list):
+                self.add_roi_by_coords(
+                    roi_name=f"{roit[3]}_&#aug{k}",
+                    coord_lists=subcoords,
+                    image_name=roit[2],
+                    group=roit[1],
+                    as_mask=False,
+                    print_update=False,
+                    _roi_id=f"{roit[0]}_&#aug{k}",
+                )
+            # Generate additional sample targets
+            target_sub_list = [
+                (
+                    f"{roit[0]}_&#aug{k}",
+                    f"{target_it[1]}_&#aug{k}",
+                    target_it[2],
+                    target_it[3],
+                    target_it[4],
+                    np.int8(0),
+                    np.int8(1),
+                )
+                for k in range(len(subcoords_list))
+            ]
+            # Validate IDs
+            existed_ids = [tit[0] for tit in self.sample_targets]
+            for tsub in target_sub_list:
+                if tsub[0] not in existed_ids:
+                    raise ValueError(
+                        f"Sample ID mismatch, expected ID from target: '{tsub[0]}'\n\navailable IDs: {existed_ids}"
+                    )
+            # Update sample targets
+            self.sample_targets = targets_old + target_sub_list
 
     ## Standalone 1D spectrum samples
     @overload
@@ -4812,7 +4942,75 @@ class SpecExp:
         # Load to instance
         with open(unc_path(dump_path0), 'rb') as f:
             loaded_instance = dill.load(f)
-        self.__dict__.update(loaded_instance.__dict__)
+        # self.__dict__.update(loaded_instance.__dict__)
+        for key, value in loaded_instance.__dict__.items():
+            object.__setattr__(self, key, value)
 
     # Alias
     load_config = load_data_config
+
+
+# %% SpecExp validator for SpecPipe
+
+
+# SpecExp validation
+@simple_type_validator
+def _spec_exp_validator(spec_exp: SpecExp) -> None:  # noqa: C901
+    """Validate whether SpecExp instance is completely and correctly configured."""
+    # Validate SpecExp
+    if type(spec_exp) is not SpecExp:
+        raise TypeError(f"spec_exp must be a SpecExp object, but got: {type(spec_exp)}")
+
+    # Validate report diretory
+    if not os.path.isdir(unc_path(spec_exp._report_directory)):
+        raise ValueError(f"\nReport directory of given SpecExp is invalid: \n'{spec_exp._report_directory}'")
+
+    # Validate group
+    if len(spec_exp.groups) == 0:
+        raise ValueError("No group is found in given SpecExp")
+
+    # Validate sample data configs
+    if len(spec_exp.standalone_specs_sample) == 0:
+        if len(spec_exp.images) == 0:
+            raise ValueError("Neither image path nor standalone spectrum is found in given SpecExp")
+        elif len(spec_exp.rois_sample) == 0:
+            raise ValueError("Neither sample ROI nor standalone spectrum is found in given SpecExp")
+        for g in spec_exp.groups:
+            group_images = spec_exp.ls_images(group=g, return_dataframe=True, print_result=False)
+            group_rois = spec_exp.ls_rois(group=g, roi_type="sample", return_dataframe=True, print_result=False)
+            if len(group_images) == 0:
+                raise ValueError(f"Neither image nor standalone spectrum is found in group: '{g}'")
+            elif len(group_rois) == 0:
+                raise ValueError(f"Neither image sample ROI nor standalone spectrum is found in group: '{g}'")
+    else:
+        if len(spec_exp.images) > 0 or len(spec_exp.rois_sample) > 0:
+            raise ValueError(
+                "Hybrid samples from both standalone spectra and spectral images "
+                + "is not allowed by SpecPipe pipeline."
+                + "\nPlease provide either pure image samples or standalone spectrum samples"
+            )
+        for g in spec_exp.groups:
+            if (
+                len(
+                    spec_exp.ls_standalone_specs(
+                        group=g,
+                        use_type="sample",
+                        print_result=False,
+                        return_dataframe=True,
+                    )
+                )
+                == 0
+            ):
+                raise ValueError(f"No spectrum is found in group: '{g}'")
+
+    # Validate sample target values
+    sample_target_values = [spt[2] for spt in spec_exp.sample_targets]
+    if len(spec_exp.sample_targets) == 0 or sample_target_values == [None] * len(sample_target_values):
+        raise ValueError("No sample target value is found in given SpecExp")
+    for stt in spec_exp.sample_targets:
+        if stt[2] is None or stt[2] == np.nan:
+            raise ValueError(
+                "Sample target value with ID '{stt[0]}', label '{stt[1]}' and group '{stt[3]}'\
+                is missing. Got sample target value: {stt[2]}"
+            )
+    return None

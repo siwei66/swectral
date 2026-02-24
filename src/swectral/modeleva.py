@@ -177,7 +177,7 @@ def _val_validation_method(  # noqa: C901
         )
 
 
-# TODO: Get indices for data train-test split
+# Get indices for data train-test split
 @simple_type_validator
 def _data_split_core(  # noqa: C901
     X: np.ndarray,  # noqa: N803
@@ -303,7 +303,7 @@ def _data_split_core(  # noqa: C901
     return dsp_inds
 
 
-# TODO: masked_sample_redistributer
+# Masked_sample_redistributer
 @simple_type_validator
 def _masked_sample_redistributer(fold_ids: dict, random_state: int) -> dict:
     """
@@ -428,11 +428,10 @@ class ModelEva:
                 str,
                 str,
                 str,
-                # TODO: new
                 np.int8,
                 np.int8,
                 tuple[int, ...],
-                Union[str, int, bool, float],
+                Any,
                 Annotated[Any, arraylike_validator(ndim=1)],
             ]
         ],
@@ -479,7 +478,6 @@ class ModelEva:
         self._sid: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[0]  # Sample ID
         self._sample_label: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[1]
         self._validation_group: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[2]
-        # TODO: new
         self._mask_test: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[3]
         self._mask_train: Annotated[Any, arraylike_validator(ndim=1)] = sample_data_structured[4]
         self._X_original_shape: tuple[int, ...] = sample_data_structured[-3]
@@ -583,7 +581,6 @@ class ModelEva:
             "use method 'update_samples' to update validation_group",
         )
 
-    # TODO: new
     @property
     def mask_test(self) -> Annotated[Any, arraylike_validator(ndim=1)]:
         return self._mask_test
@@ -595,7 +592,6 @@ class ModelEva:
             "use method 'update_samples' to update mask_test",
         )
 
-    # TODO: new
     @property
     def mask_train(self) -> Annotated[Any, arraylike_validator(ndim=1)]:
         return self._mask_train
@@ -784,11 +780,10 @@ class ModelEva:
                 str,
                 str,
                 str,
-                # TODO: new
                 np.int8,
                 np.int8,
                 tuple[int, ...],
-                Union[str, int, bool, float],
+                Any,
                 Annotated[Any, arraylike_validator(ndim=1)],
             ]
         ],
@@ -798,7 +793,6 @@ class ModelEva:
         self._sid = sample_data_structured[0]
         self._sample_label = sample_data_structured[1]
         self._validation_group = sample_data_structured[2]
-        # TODO: new
         self._mask_test = sample_data_structured[3]
         self._mask_train = sample_data_structured[4]
         self._X_original_shape = sample_data_structured[-3]
@@ -821,11 +815,10 @@ class ModelEva:
                 str,
                 str,
                 str,
-                # TODO: new
                 np.int8,
                 np.int8,
                 tuple[int, ...],
-                Union[str, int, bool, float],
+                Any,
                 Annotated[Any, arraylike_validator(ndim=1)],
             ]
         ],
@@ -833,7 +826,6 @@ class ModelEva:
         Annotated[np.ndarray, arraylike_validator(ndim=1)],
         Annotated[np.ndarray, arraylike_validator(ndim=1)],
         Annotated[np.ndarray, arraylike_validator(ndim=1)],
-        # TODO: new
         Annotated[np.ndarray, arraylike_validator(ndim=1)],
         Annotated[np.ndarray, arraylike_validator(ndim=1)],
         tuple[int, ...],
@@ -909,13 +901,11 @@ class ModelEva:
             else:
                 val_group.append(st[2])
 
-            # TODO: Get y mask
             if i == 0:
                 val_mte = [st[3]]
             else:
                 val_mte.append(st[3])
 
-            # TODO: Get X mask
             if i == 0:
                 val_mtr = [st[4]]
             else:
@@ -926,7 +916,6 @@ class ModelEva:
             np.asarray(sid),
             np.asarray(sample_labels),
             np.asarray(val_group),
-            # TODO: new
             np.asarray(val_mte),
             np.asarray(val_mtr),
             tuple(xshp),
@@ -990,7 +979,6 @@ class ModelEva:
             else:
                 raise ValueError(f"Dimension of give sample ID series must be 1, got: {sid_arr.ndim}")
 
-    # TODO: new
     @overload
     def _data_split(
         self,

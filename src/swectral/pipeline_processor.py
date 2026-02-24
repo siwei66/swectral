@@ -972,8 +972,8 @@ class _ModelMethod:
                 str,
                 np.int8,
                 np.int8,
-                tuple[int],
-                Union[str, int, bool, float],
+                tuple[int, ...],
+                Any,
                 Annotated[Any, arraylike_validator(ndim=1)],
             ]
         ],
@@ -1045,8 +1045,8 @@ def _model_evaluator(  # noqa: C901
             str,
             np.int8,
             np.int8,
-            tuple[int],
-            Union[str, int, bool, float],
+            tuple[int, ...],
+            Any,
             Annotated[Any, arraylike_validator(ndim=1)],
         ]
     ],

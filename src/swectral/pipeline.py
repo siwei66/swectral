@@ -59,7 +59,7 @@ from .modeleva import ModelEva
 from .rasterop import croproi, pixel_apply
 from .resultcli import group_stats_report, core_chain_report
 from .roistats import roispec, minbbox
-from .specexp import SpecExp
+from .specexp import SpecExp, _spec_exp_validator
 from .specio import (
     arraylike_validator,
     dataframe_validator,
@@ -74,7 +74,6 @@ from .pipeline_validator import (
     _target_type_validation_for_serialization,
     _dl_val,
     _data_level_seq_validator,
-    _spec_exp_validator,
     _process_validator,
     _classifier_validator,
     _regressor_validator,
@@ -2984,7 +2983,9 @@ class SpecPipe:
         # Load to instance
         with open(unc_path(dump_path0), 'rb') as f:
             loaded_instance = dill.load(f)
-        self.__dict__.update(loaded_instance.__dict__)
+        # self.__dict__.update(loaded_instance.__dict__)
+        for key, value in loaded_instance.__dict__.items():
+            object.__setattr__(self, key, value)
 
     # Alias
     load_config = load_pipe_config
@@ -3754,6 +3755,9 @@ class SpecPipe:
         if show_progress:
             print("\nConstruct chain sample list ...\nChain :")
         # pci - process chain id
+        pre_results: list[
+            tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any, arraylike_validator(ndim=1)]]
+        ]  # noqa: E501
         for pci in tqdm(range(len(pchains)), total=len(pchains), disable=(not show_progress)):
             pchain = pchains[pci]
             # Preprocessing results
@@ -3790,6 +3794,8 @@ class SpecPipe:
                                 step_data,
                             )
                         )  # noqa: E501
+
+            # TODO: In validation group remix for data augmentation - data pull position
 
             ## Save resutls to files
             # Create file name

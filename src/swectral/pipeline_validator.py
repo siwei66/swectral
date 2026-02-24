@@ -26,7 +26,6 @@ from .specio import (
     simple_type_validator,
     unc_path,
 )
-from .specexp import SpecExp
 
 # For multiprocessing
 global ModelEva
@@ -269,71 +268,6 @@ def _regressor_validator(regressor: object) -> None:
         raise TypeError(f"Expected a regressor instance, but got '{regressor}' with type '{type(regressor)}'.")
     if not hasattr(regressor, "fit") or not hasattr(regressor, "predict"):
         raise ValueError("Expected a regressor instance with 'fit' and 'predict' methods.")
-
-
-# %% SpecExp validator for SpecPipe
-
-
-# SpecExp validation
-@simple_type_validator
-def _spec_exp_validator(spec_exp: SpecExp) -> None:  # noqa: C901
-    # Validate SpecExp
-    if type(spec_exp) is not SpecExp:
-        raise TypeError(f"spec_exp must be a SpecExp object, but got: {type(spec_exp)}")
-
-    # Validate report diretory
-    if not os.path.isdir(unc_path(spec_exp._report_directory)):
-        raise ValueError(f"\nReport directory of given SpecExp is invalid: \n'{spec_exp._report_directory}'")
-
-    # Validate group
-    if len(spec_exp.groups) == 0:
-        raise ValueError("No group is found in given SpecExp")
-
-    # Validate sample data configs
-    if len(spec_exp.standalone_specs_sample) == 0:
-        if len(spec_exp.images) == 0:
-            raise ValueError("Neither image path nor standalone spectrum is found in given SpecExp")
-        elif len(spec_exp.rois_sample) == 0:
-            raise ValueError("Neither sample ROI nor standalone spectrum is found in given SpecExp")
-        for g in spec_exp.groups:
-            group_images = spec_exp.ls_images(group=g, return_dataframe=True, print_result=False)
-            group_rois = spec_exp.ls_rois(group=g, roi_type="sample", return_dataframe=True, print_result=False)
-            if len(group_images) == 0:
-                raise ValueError(f"Neither image nor standalone spectrum is found in group: '{g}'")
-            elif len(group_rois) == 0:
-                raise ValueError(f"Neither image sample ROI nor standalone spectrum is found in group: '{g}'")
-    else:
-        if len(spec_exp.images) > 0 or len(spec_exp.rois_sample) > 0:
-            raise ValueError(
-                "Hybrid samples from both standalone spectra and spectral images "
-                + "is not allowed by SpecPipe pipeline."
-                + "\nPlease provide either pure image samples or standalone spectrum samples"
-            )
-        for g in spec_exp.groups:
-            if (
-                len(
-                    spec_exp.ls_standalone_specs(
-                        group=g,
-                        use_type="sample",
-                        print_result=False,
-                        return_dataframe=True,
-                    )
-                )
-                == 0
-            ):
-                raise ValueError(f"No spectrum is found in group: '{g}'")
-
-    # Validate sample target values
-    sample_target_values = [spt[2] for spt in spec_exp.sample_targets]
-    if len(spec_exp.sample_targets) == 0 or sample_target_values == [None] * len(sample_target_values):
-        raise ValueError("No sample target value is found in given SpecExp")
-    for stt in spec_exp.sample_targets:
-        if stt[2] is None or stt[2] == np.nan:
-            raise ValueError(
-                "Sample target value with ID '{stt[0]}', label '{stt[1]}' and group '{stt[3]}'\
-                is missing. Got sample target value: {stt[2]}"
-            )
-    return None
 
 
 # %% Pipeline process method functionality validator

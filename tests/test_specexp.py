@@ -24,7 +24,7 @@ import pandas as pd
 from swectral.specio import silent
 
 # Functions to test
-from swectral.specexp import SpecExp
+from swectral.specexp import SpecExp, _spec_exp_validator
 
 
 # %% Helper functions for testing
@@ -63,7 +63,7 @@ def create_test_directory_structure(base_dir: str) -> tuple[str, str]:
       <Polygon>
         <Exterior>
           <LinearRing>
-            <Coordinates>100.0 200.0 300.0 400.0 500.0 600.0 100.0 200.0</Coordinates>
+            <Coordinates>100.0 200.0 300.0 400.0 100.0 600.0 100.0 200.0</Coordinates>
           </LinearRing>
         </Exterior>
       </Polygon>
@@ -75,7 +75,7 @@ def create_test_directory_structure(base_dir: str) -> tuple[str, str]:
       <Polygon>
         <Exterior>
           <LinearRing>
-            <Coordinates>200.0 200.0 300.0 300.0 500.0 500.0 200.0 200.0</Coordinates>
+            <Coordinates>200.0 200.0 300.0 300.0 500.0 100.0 200.0 200.0</Coordinates>
           </LinearRing>
         </Exterior>
       </Polygon>
@@ -582,6 +582,58 @@ class TestSpecExp(unittest.TestCase):
 
         remaining_rois = spec_exp.ls_rois(return_dataframe=True)
         assert len(remaining_rois) == 0
+
+    @staticmethod
+    @silent
+    def test_roi_subset_augmentation() -> None:
+        spec_exp = TestSpecExp.spec_exp_init()
+
+        # Add group and images
+        spec_exp.add_groups(["test_group"])
+        spec_exp.add_images_by_name(
+            group="test_group",
+            image_name="image*.tif",
+            image_directory=TestSpecExp.images_dir,
+        )
+        # Add ROIs
+        spec_exp.add_rois_by_suffix(
+            group="test_group",
+            roi_filename_suffix="_rois.xml",
+            search_directory=TestSpecExp.rois_dir,
+        )
+        targets = spec_exp.ls_sample_targets(return_dataframe=True)
+        assert len(targets) > 0
+        # Add target values
+        new_targets = pd.DataFrame(
+            {
+                "Sample_ID": targets["Sample_ID"],
+                "Label": targets["Label"],
+                "Target_value": [1.0] * len(targets),
+                "Group": ["test_group"] * len(targets),
+                "Validation_group": targets["Sample_ID"],
+                "Test": [1] * len(targets),
+                "Train": [1] * len(targets),
+            }
+        )
+        spec_exp.sample_targets_from_df(new_targets)
+
+        n_roi = len(spec_exp.rois_sample)
+
+        # Resampling augmentation
+        num_sub = 3
+        spec_exp.roi_subset_augmentation(n_sub=num_sub, resolution=10, coverage_ratio=0.33)
+        # Assert ROIs
+        origin_roi_ids = [roit[0] for roit in spec_exp.rois_sample if "_&#aug" not in roit[0]]
+        aug_roi_ids = [roit[0] for roit in spec_exp.rois_sample if "_&#aug" in roit[0]]
+        assert len(origin_roi_ids) == n_roi
+        assert len(aug_roi_ids) == n_roi * num_sub
+        # Assert SpecExp configured
+        _spec_exp_validator(spec_exp)
+        # Assert Sample target correctly configured
+        for targ in spec_exp.sample_targets:
+            if "_&#aug" in targ[0]:
+                assert targ[-1] == 1
+                assert targ[-2] == 0
 
     @staticmethod
     @silent
