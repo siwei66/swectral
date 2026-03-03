@@ -1018,6 +1018,7 @@ def combined_model_marginal_stats(
     metrics_dict_model = _convert_metrics_combined_model(metrics_dict, model_evaluation_report_dir)
 
     # Compute stats
+    print("Combined model component decomposition...")
     assert metrics_dict is not None
     if metrics_dict["is_regression"]:
         marginal_performance_stats = regression_performance_marginal_stats(

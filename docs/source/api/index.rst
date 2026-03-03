@@ -12,5 +12,6 @@ API Reference
    spectral_indices
    model_combiners
    raster_operations
+   data_augmentation
    io_utilities
    demo_data_tools

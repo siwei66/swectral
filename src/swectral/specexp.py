@@ -186,6 +186,9 @@ class SpecExp:
     rm_rois
         Remove loaded ROIs by provided values or patterns.
 
+    roi_subset_augmentation
+        Perform spatial subset augmentation on the ROI data.
+
     add_standalone_specs
         Add 1D standalone spectra. Alias: add_specs.
 

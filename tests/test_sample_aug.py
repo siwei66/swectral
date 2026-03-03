@@ -23,7 +23,7 @@ import numpy as np
 from shapely.geometry import Polygon, MultiPolygon
 
 # Functions to test
-from swectral.sample_aug import resample_roi, _remix_samples
+from swectral.sample_aug import resample_roi, _blend_samples, blend_samples
 
 
 # %% test functions : resample_roi
@@ -110,7 +110,7 @@ class TestResampleROI:
 # TestResampleROI.test_multipart_roi_input()
 
 
-# %% test functions : _remix_samples
+# %% test functions : _blend_samples
 
 
 class TestRemixSamples:
@@ -120,13 +120,14 @@ class TestRemixSamples:
         """Create a dataset with spectral-like predictors."""
         return [
             # Group A: Two samples close in target
-            ("S1", "L1", "A", np.int8(0), np.int8(1), (3,), 10.0, np.array([1.0, 1.0, 1.0])),
-            ("S2", "L1", "A", np.int8(0), np.int8(1), (3,), 10.2, np.array([1.1, 1.1, 1.1])),
+            ("S1", "L1", "A", np.int8(1), np.int8(1), (3,), 10.0, np.array([1.0, 1.0, 1.0])),
+            ("S2", "L1", "A", np.int8(1), np.int8(1), (3,), 10.2, np.array([1.1, 1.1, 1.1])),
+            ("S3", "L1", "A", np.int8(1), np.int8(1), (3,), 15.0, np.array([2.1, 3.1, 2.1])),
             # Group B: Two samples close in target
-            ("S3", "L2", "B", np.int8(0), np.int8(1), (3,), 20.0, np.array([5.0, 5.0, 5.0])),
-            ("S4", "L2", "B", np.int8(0), np.int8(1), (3,), 20.1, np.array([5.2, 5.2, 5.2])),
+            ("S4", "L2", "B", np.int8(1), np.int8(1), (3,), 20.0, np.array([5.0, 5.0, 5.0])),
+            ("S5", "L2", "B", np.int8(1), np.int8(1), (3,), 20.1, np.array([5.2, 5.2, 5.2])),
             # Group C: Lonely sample (no neighbors)
-            ("S5", "L3", "C", np.int8(0), np.int8(1), (3,), 30.0, np.array([10.0, 10.0, 10.0])),
+            ("S6", "L3", "C", np.int8(1), np.int8(1), (3,), 30.0, np.array([10.0, 10.0, 10.0])),
         ]
 
     @staticmethod
@@ -134,23 +135,25 @@ class TestRemixSamples:
         """Helper to create a dataset with string targets (labels)."""
         return [
             # Group A: Three samples, two share 'Class_X', one is 'Class_Y'
-            ("S1", "L1", "A", np.int8(0), np.int8(1), (3,), "Class_X", np.array([1.0, 1.0, 1.0])),
-            ("S2", "L1", "A", np.int8(0), np.int8(1), (3,), "Class_X", np.array([1.2, 1.2, 1.2])),
-            ("S3", "L1", "A", np.int8(0), np.int8(1), (3,), "Class_Y", np.array([5.0, 5.0, 5.0])),
+            ("S1", "L1", "A", np.int8(1), np.int8(1), (3,), "Class_X", np.array([1.0, 1.0, 1.0])),
+            ("S2", "L1", "A", np.int8(1), np.int8(1), (3,), "Class_X", np.array([1.2, 1.2, 1.2])),
+            ("S3", "L1", "A", np.int8(1), np.int8(1), (3,), "Class_Y", np.array([2.1, 3.1, 2.1])),
             # Group B: Two samples share 'Class_Z'
-            ("S4", "L2", "B", np.int8(0), np.int8(1), (3,), "Class_Z", np.array([10.0, 10.0, 10.0])),
-            ("S5", "L2", "B", np.int8(0), np.int8(1), (3,), "Class_Z", np.array([10.5, 10.5, 10.5])),
+            ("S4", "L2", "B", np.int8(1), np.int8(1), (3,), "Class_Z", np.array([5.0, 5.0, 5.0])),
+            ("S5", "L2", "B", np.int8(1), np.int8(1), (3,), "Class_Z", np.array([5.2, 5.2, 5.2])),
+            # Group C: Lonely sample (no neighbors)
+            ("S6", "L3", "C", np.int8(1), np.int8(1), (3,), "Class_Z", np.array([10.0, 10.0, 10.0])),
         ]
 
     @staticmethod
     def test_name_and_metadata() -> None:
         """Verifies function exists under the new name and returns correct tuple structure."""
         data = TestRemixSamples.mock_data_regression()
-        result = _remix_samples(data, n_samples=1, is_regression=True, abs_tol=1.0)
+        result = _blend_samples(data, n_samples=1, is_regression=True, abs_tol=0.5)
 
-        assert len(result) == 2
+        assert len(result) == len(data) + 2
         # Check metadata: Index 3 should be int8(0), Index 4 should be int8(1)
-        for sample in result:
+        for sample in result[len(data) :]:
             assert isinstance(sample[3], np.int8) and sample[3] == 0
             assert isinstance(sample[4], np.int8) and sample[4] == 1
 
@@ -160,9 +163,9 @@ class TestRemixSamples:
         data = TestRemixSamples.mock_data_regression()
         # Filter for only Group C (S5 is lonely)
         group_c_only = [s for s in data if s[2] == "C"]
-        result = _remix_samples(group_c_only, n_samples=5, is_regression=True, abs_tol=1.0)
+        result = _blend_samples(group_c_only, n_samples=5, is_regression=True, abs_tol=1.0)
 
-        assert len(result) == 0
+        assert len(result) == 0 + len(group_c_only)
 
     @staticmethod
     def test_regression_blending_math() -> None:
@@ -173,9 +176,9 @@ class TestRemixSamples:
             ("A2", "L", "G", np.int8(0), np.int8(1), (3,), 20.0, np.array([2.0, 2.0, 2.0])),
         ]
         # Check target values fall between 10 and 20
-        result = _remix_samples(data, n_samples=10, is_regression=True, abs_tol=15.0, random_state=42)
+        result = _blend_samples(data, n_samples=10, is_regression=True, abs_tol=15.0, random_state=42)
 
-        for sample in result:
+        for sample in result[: -len(data)]:
             target = sample[-2]
             predictors = sample[-1]
             # Target must be between the original values
@@ -190,21 +193,21 @@ class TestRemixSamples:
         n_request = 10
 
         # Test Grouped - not limited
-        _ = _remix_samples(data, n_samples=n_request, use_validation_group=True, is_regression=True, abs_tol=1.0)
+        _ = _blend_samples(data, n_samples=n_request, use_validation_group=True, is_regression=True, abs_tol=1.0)
 
         # Test Global
-        res_global = _remix_samples(
+        res_global = _blend_samples(
             data, n_samples=n_request, use_validation_group=False, is_regression=True, abs_tol=1.0
         )
         # Global should hit the target exactly because of your +int(not use_validation_group) logic
-        assert len(res_global) == n_request
+        assert len(res_global) == n_request + len(data)
 
     @staticmethod
     def test_id_uniqueness() -> None:
         """Checks that generated IDs do not collide within the same call."""
         data = TestRemixSamples.mock_data_regression()
         n_request = 20
-        result = _remix_samples(data, n_samples=n_request, is_regression=True, abs_tol=1.0, use_validation_group=False)
+        result = _blend_samples(data, n_samples=n_request, is_regression=True, abs_tol=1.0, use_validation_group=False)
 
         ids = [s[0] for s in result]
         assert len(ids) == len(set(ids)), "Duplicate IDs"
@@ -218,10 +221,10 @@ class TestRemixSamples:
         seed = 666
 
         # First Run
-        res_a = _remix_samples(sample_data=data, n_samples=5, is_regression=True, abs_tol=1.0, random_state=seed)
+        res_a = _blend_samples(sample_data=data, n_samples=5, is_regression=True, abs_tol=1.0, random_state=seed)
 
         # Second Run
-        res_b = _remix_samples(sample_data=data, n_samples=5, is_regression=True, abs_tol=1.0, random_state=seed)
+        res_b = _blend_samples(sample_data=data, n_samples=5, is_regression=True, abs_tol=1.0, random_state=seed)
 
         assert len(res_a) == len(res_b)
 
@@ -239,14 +242,14 @@ class TestRemixSamples:
 
         # We request samples. S1 and S2 should blend. S3 has no neighbors in Group A.
         # S4 and S5 should blend in Group B.
-        result = _remix_samples(
+        result = _blend_samples(
             sample_data=data, n_samples=10, is_regression=False, use_validation_group=True, random_state=42
         )
 
         # Ensure we actually generated samples
-        assert len(result) > 0
+        assert len(result) > 0 + len(data)
 
-        for sample in result:
+        for sample in result[: -len(data)]:
             target = sample[-2]
             # The target must remain a string
             assert isinstance(target, str)
@@ -269,12 +272,12 @@ class TestRemixSamples:
         ]
 
         # With validation groups ON, S1 and S2 are lonely (different groups).
-        res_grouped = _remix_samples(data, n_samples=1, is_regression=False, use_validation_group=True)
-        assert len(res_grouped) == 0
+        res_grouped = _blend_samples(data, n_samples=1, is_regression=False, use_validation_group=True)
+        assert len(res_grouped) == 0 + len(data)
 
         # With validation groups OFF, they find each other because they are both 'Oak'.
-        res_global = _remix_samples(data, n_samples=1, is_regression=False, use_validation_group=False)
-        assert len(res_global) == 1
+        res_global = _blend_samples(data, n_samples=1, is_regression=False, use_validation_group=False)
+        assert len(res_global) == 1 + len(data)
         assert res_global[0][-2] == "Oak"
 
     @staticmethod
@@ -283,16 +286,32 @@ class TestRemixSamples:
         data = TestRemixSamples.mock_data_classification()
         seed = 99
 
-        res_1 = _remix_samples(data, 5, is_regression=False, random_state=seed)
-        res_2 = _remix_samples(data, 5, is_regression=False, random_state=seed)
+        res_1 = _blend_samples(data, 5, is_regression=False, random_state=seed)
+        res_2 = _blend_samples(data, 5, is_regression=False, random_state=seed)
 
         for s1, s2 in zip(res_1, res_2):
             assert s1[0] == s2[0]
             assert s1[-2] == s2[-2]
             np.testing.assert_allclose(s1[-1], s2[-1])
 
+    @staticmethod
+    def test_blend_samples_generator() -> None:
+        """Test functionality of _blend_samples generator"""
 
-# %% Test - _remix_samples
+        data1 = TestRemixSamples.mock_data_regression()
+
+        blend1 = blend_samples(n_samples=10, is_regression=True)
+        res_1 = blend1(data1)
+        assert len(res_1) == 12
+
+        data2 = TestRemixSamples.mock_data_classification()
+
+        blend2 = blend_samples(n_samples=10, is_regression=False)
+        res_2 = blend2(data2)
+        assert len(res_2) == 12
+
+
+# %% Test - _blend_samples
 
 
 # TestRemixSamples.test_name_and_metadata()
@@ -304,6 +323,7 @@ class TestRemixSamples:
 # TestRemixSamples.test_classification_neighbor_filtering()
 # TestRemixSamples.test_classification_global_mode()
 # TestRemixSamples.test_determinism_with_strings()
+# TestRemixSamples.test_blend_samples_generator()
 
 
 # %% Test main

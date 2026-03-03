@@ -5,10 +5,9 @@ Tests for spectral image processing and modeling pipeline (SpecPipe)
 Copyright (c) 2025 Siwei Luo. MIT License.
 """
 
-# ruff: noqa: I001
 # OS
 import os
-import sys  # noqa: E402
+import sys
 
 # Initialize LOKY_MAX_CPU_COUNT if it does not exist before imports to prevent corresponding warning
 os.environ.setdefault('LOKY_MAX_CPU_COUNT', '1')
@@ -44,6 +43,7 @@ from swectral.example_data import create_test_raster, create_test_roi_xml, creat
 from swectral.roistats import Stats2d, roi_mean, roispec  # noqa: E402
 from swectral.specexp import SpecExp  # noqa: E402
 from swectral.specio import silent, lsdir_robust  # noqa: E402
+from swectral.assembly import identity_assembly  # noqa: E402
 
 # Functions to test
 from swectral.pipeline import SpecPipe  # noqa: E402
@@ -159,12 +159,21 @@ def create_test_spec_pipe(
     pipe.add_process(2, 2, 1, arr_simple_half)
     pipe.add_process(5, 6, 0, roispec)
     pipe.add_process(6, 7, 0, Stats2d().mean)
+    # TODO: new
+    pipe.add_process(7, 8, 0, identity_assembly)
+    pipe.add_process(8, 8, 1, identity_assembly)
     if is_regression:
-        pipe.add_process(7, 8, 0, RandomForestRegressor(n_estimators=6), validation_method=validation_method)
-        pipe.add_process(7, 8, 0, KNeighborsRegressor(n_neighbors=3), validation_method=validation_method)
+        # TODO: changed
+        # pipe.add_process(7, 8, 0, RandomForestRegressor(n_estimators=6), validation_method=validation_method)
+        # pipe.add_process(7, 8, 0, KNeighborsRegressor(n_neighbors=3), validation_method=validation_method)
+        pipe.add_process(8, 9, 0, RandomForestRegressor(n_estimators=6), validation_method=validation_method)
+        pipe.add_process(8, 9, 0, KNeighborsRegressor(n_neighbors=3), validation_method=validation_method)
     else:
-        pipe.add_process(7, 8, 0, RandomForestClassifier(n_estimators=6), validation_method=validation_method)
-        pipe.add_process(7, 8, 0, KNeighborsClassifier(n_neighbors=3), validation_method=validation_method)
+        # TODO: changed
+        # pipe.add_process(7, 8, 0, RandomForestClassifier(n_estimators=6), validation_method=validation_method)
+        # pipe.add_process(7, 8, 0, KNeighborsClassifier(n_neighbors=3), validation_method=validation_method)
+        pipe.add_process(8, 9, 0, RandomForestClassifier(n_estimators=6), validation_method=validation_method)
+        pipe.add_process(8, 9, 0, KNeighborsClassifier(n_neighbors=3), validation_method=validation_method)
 
     return pipe
 
@@ -308,7 +317,7 @@ class TestSpecPipe(unittest.TestCase):
     @staticmethod
     @silent
     def test_add_process() -> None:
-        """Test adding process to processing pipeline"""
+        """Test adding preprocessing processes to the pipeline"""
         # Initialize test_dir
         TestSpecPipe._init_test_dir()
         test_dir = TestSpecPipe.test_dir
@@ -316,6 +325,7 @@ class TestSpecPipe(unittest.TestCase):
         # Create test spec exp
         test_exp = create_test_spec_exp(test_dir)
 
+        # Basic
         pipe = SpecPipe(test_exp)
         assert len(pipe.process) == 0
         pipe.add_process(0, 0, 0, original_img)
@@ -330,7 +340,7 @@ class TestSpecPipe(unittest.TestCase):
         # Correct chains updating
         assert pipe.process_chains == [("0_0_%#1", "1_1_%#1")]
 
-        # Parallel test processes
+        # Multiple process options
         pipe.add_process(1, 1, 1, snv)
         # Correct process updating
         assert len(pipe.process) == 3
@@ -341,7 +351,7 @@ class TestSpecPipe(unittest.TestCase):
         # Correct chains updating
         assert pipe.process_chains == [("0_0_%#1", "1_1_%#1"), ("0_0_%#1", "1_1_%#2")]
 
-        # Sequential test processes
+        # Sequential processes
         pipe = SpecPipe(test_exp)
         pipe.add_process(1, 1, 0, snv)
         pipe.add_process(1, 1, 1, snv)
@@ -350,7 +360,7 @@ class TestSpecPipe(unittest.TestCase):
         assert pipe.process_steps == [["1_0_%#1"], ["1_1_%#1"], ["1_2_%#1"]]
         assert pipe.process_chains == [("1_0_%#1", "1_1_%#1", "1_2_%#1")]
 
-        # Method of other data levels
+        # Method of other preprocessing data levels
         pipe.add_process(2, 2, 3, arr_snv)
         assert len(pipe.process) == 4
         if HAS_CUDA:
@@ -362,11 +372,23 @@ class TestSpecPipe(unittest.TestCase):
             assert len(pipe.process) == 7
             pipe.add_process(6, 7, 0, Stats2d().median)
             assert len(pipe.process) == 8
+            pipe.add_process(7, 7, 0, snv)
+            assert len(pipe.process) == 9
+            n_added = 9
         else:
             pipe.add_process(5, 6, 0, roispec)
             assert len(pipe.process) == 5
             pipe.add_process(6, 7, 0, Stats2d().median)
             assert len(pipe.process) == 6
+            pipe.add_process(7, 7, 0, snv)
+            assert len(pipe.process) == 7
+            n_added = 7
+
+        # TODO: Method of assembly data levels
+        pipe.add_process(7, 8, 0, identity_assembly)
+        assert len(pipe.process) == n_added + 1
+        pipe.add_process(8, 8, 0, identity_assembly)
+        assert len(pipe.process) == n_added + 2
 
         # Image levels cross-level parallel processes
         pipe = SpecPipe(test_exp)
@@ -405,7 +427,7 @@ class TestSpecPipe(unittest.TestCase):
         # Invalid methods
         with pytest.raises(TypeError, match="must be a model or Callable or list"):
             pipe.add_process(0, 7, 1, "Invalid process")
-        with pytest.raises(ValueError, match="Method testing fails"):
+        with pytest.raises(ValueError, match="Method validation fails"):
             pipe.add_process(0, 7, 1, print)
 
     @staticmethod
@@ -565,19 +587,24 @@ class TestSpecPipe(unittest.TestCase):
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(5, 7, 0, roi_mean)
         assert len(pipe.ls_process(return_result=True, print_result=False)) == 2
-        assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 0
+        # TODO: assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 0
+        assert len(pipe.ls_process(output_data_level=9, return_result=True, print_result=False)) == 0
         assert len(pipe.process_steps) == 2
         assert len(pipe.process_chains) == 1
 
         # Add models
-        pipe.add_process(7, 8, 0, regressor)
+        # TODO: pipe.add_process(7, 8, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.ls_process(return_result=True, print_result=False)) == 3
-        assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 1
+        # TODO: assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 1
+        assert len(pipe.ls_process(output_data_level=9, return_result=True, print_result=False)) == 1
         assert len(pipe.process_steps) == 3
         assert len(pipe.process_chains) == 1
-        pipe.add_process(7, 8, 0, regressor)
+        # TODO: pipe.add_process(7, 8, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.ls_process(return_result=True, print_result=False)) == 4
-        assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 2
+        # TODO: assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 2
+        assert len(pipe.ls_process(output_data_level=9, return_result=True, print_result=False)) == 2
         assert len(pipe.process_steps) == 3
         assert len(pipe.process_chains) == 2
 
@@ -601,9 +628,11 @@ class TestSpecPipe(unittest.TestCase):
         assert len(pipe.ls_model(return_result=True, print_result=False)) == 0
 
         # Add and list models
-        pipe.add_process(7, 8, 0, regressor)
+        # TODO: pipe.add_process(7, 8, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.ls_model(return_result=True, print_result=False)) == 1
-        pipe.add_process(7, 8, 0, regressor)
+        # TODO: pipe.add_process(7, 8, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.ls_model(return_result=True, print_result=False)) == 2
         assert len(pipe.ls_model(model_id=pipe.process_chains[0][-1], return_result=True, print_result=False)) == 1
         assert pipe.ls_model(return_result=False, print_result=True) is None
@@ -627,9 +656,13 @@ class TestSpecPipe(unittest.TestCase):
 
         # Add models
         def add_models() -> None:
-            pipe.add_process(7, 8, 0, regressor_1)
-            pipe.add_process(7, 8, 0, regressor_1, process_label="test_regressor")
-            pipe.add_process(7, 8, 0, regressor_2)
+            # TODO: changed
+            # pipe.add_process(7, 8, 0, regressor_1)
+            # pipe.add_process(7, 8, 0, regressor_1, process_label="test_regressor")
+            # pipe.add_process(7, 8, 0, regressor_2)
+            pipe.add_process(7, 9, 0, regressor_1)
+            pipe.add_process(7, 9, 0, regressor_1, process_label="test_regressor")
+            pipe.add_process(7, 9, 0, regressor_2)
 
         add_models()
         assert len(pipe.ls_process(return_result=True, print_result=False)) == 5
@@ -693,8 +726,11 @@ class TestSpecPipe(unittest.TestCase):
         pipe1.add_process(2, 2, 1, arr_simple_half)
         pipe1.add_process(5, 6, 0, roispec)
         pipe1.add_process(6, 7, 0, Stats2d().mean)
-        pipe1.add_process(7, 8, 0, RandomForestRegressor(n_estimators=6), validation_method="2-fold")
-        pipe1.add_process(7, 8, 0, KNeighborsRegressor(n_neighbors=3), validation_method="2-fold")
+        # TODO: changed
+        # pipe1.add_process(7, 8, 0, RandomForestRegressor(n_estimators=6), validation_method="2-fold")
+        # pipe1.add_process(7, 8, 0, KNeighborsRegressor(n_neighbors=3), validation_method="2-fold")
+        pipe1.add_process(7, 9, 0, RandomForestRegressor(n_estimators=6), validation_method="2-fold")
+        pipe1.add_process(7, 9, 0, KNeighborsRegressor(n_neighbors=3), validation_method="2-fold")
 
         # Create SpecPipe by add_process - multiple adding
         pipe2 = SpecPipe(test_exp)
@@ -705,7 +741,8 @@ class TestSpecPipe(unittest.TestCase):
         pipe2.add_process(6, 7, 0, Stats2d().mean)
         pipe2.add_process(
             7,
-            8,
+            # TODO: 8,
+            9,
             0,
             [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)],
             validation_method="2-fold",
@@ -722,7 +759,8 @@ class TestSpecPipe(unittest.TestCase):
                 ((2, 2), [arr_ori, arr_simple_half]),
                 ((5, 6), roispec),
                 ((6, 7), Stats2d().mean),
-                ((7, 8), [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)]),
+                # TODO: ((7, 8), [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)]),
+                ((7, 9), [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)]),
             ]
         )
         assert pipe3.ls_process(return_result=True).equals(pipe1.ls_process(return_result=True))
@@ -738,7 +776,8 @@ class TestSpecPipe(unittest.TestCase):
                 ((5, 6), roispec),
                 ((6, 7), Stats2d().mean),
                 (
-                    (7, 8),
+                    # TODO: (7, 8),
+                    (7, 9),
                     [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)],
                     {'validation_method': 'loo'},
                 ),
@@ -746,6 +785,51 @@ class TestSpecPipe(unittest.TestCase):
         )
         assert pipe4.ls_process(return_result=True).equals(pipe1.ls_process(return_result=True))
         assert pipe4.ls_chains().equals(pipe1.ls_chains())
+
+    @staticmethod
+    @silent
+    def test_ls_process_chains() -> None:
+        """Test ls_process_chains and ls_chains functionalities and edge cases."""
+        # Initialize test_dir
+        TestSpecPipe._init_test_dir()
+        test_dir = TestSpecPipe.test_dir
+
+        regressor = RandomForestRegressor(n_estimators=10)
+
+        # Basic functionality
+        pipe = create_test_spec_pipe(test_dir)
+        assert np.all(pipe.ls_chains() == pipe.ls_process_chains())
+        assert pipe.ls_chains().shape[1] == 7
+        assert pipe.ls_chains(stage="preprocessing").shape[1] == 4
+        assert pipe.ls_chains(stage="assembly").shape[1] == 2
+        assert pipe.ls_chains(stage="modeling").shape[1] == 1
+
+        # Edge cases
+        # Create test spec exp
+        test_exp = create_test_spec_exp(test_dir)
+        # Preproc:Assembly:Model = T:0:0
+        pipe = SpecPipe(test_exp)
+        pipe.add_process(5, 7, 0, roi_mean)
+        assert pipe.ls_chains().shape[1] == 1
+        assert pipe.ls_chains(stage="preprocessing").shape[1] == 1
+        assert pipe.ls_chains(stage="assembly").shape[1] == 0
+        assert pipe.ls_chains(stage="modeling").shape[1] == 0
+        # Preproc:Assembly:Model = T:1:0
+        pipe = SpecPipe(test_exp)
+        pipe.add_process(5, 7, 0, roi_mean)
+        pipe.add_process(7, 8, 0, identity_assembly)
+        assert pipe.ls_chains().shape[1] == 2
+        assert pipe.ls_chains(stage="preprocessing").shape[1] == 1
+        assert pipe.ls_chains(stage="assembly").shape[1] == 1
+        assert pipe.ls_chains(stage="modeling").shape[1] == 0
+        # Preproc:Assembly:Model = T:0:1
+        pipe = SpecPipe(test_exp)
+        pipe.add_process(5, 7, 0, roi_mean)
+        pipe.add_process(7, 9, 0, regressor)
+        assert pipe.ls_chains().shape[1] == 2
+        assert pipe.ls_chains(stage="preprocessing").shape[1] == 1
+        assert pipe.ls_chains(stage="assembly").shape[1] == 0
+        assert pipe.ls_chains(stage="modeling").shape[1] == 1
 
     @staticmethod
     @silent
@@ -764,8 +848,11 @@ class TestSpecPipe(unittest.TestCase):
         # Add process
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(5, 7, 0, roi_mean)
-        pipe.add_process(7, 8, 0, regressor)
-        pipe.add_process(7, 8, 0, regressor)
+        # TODO: changed
+        # pipe.add_process(7, 8, 0, regressor)
+        # pipe.add_process(7, 8, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
 
         # Test procs to df
         pcs_df = pipe.process_chains_to_df(print_label=False)
@@ -810,8 +897,11 @@ class TestSpecPipe(unittest.TestCase):
         # Add process
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(5, 7, 0, roi_mean)
-        pipe.add_process(7, 8, 0, regressor)
-        pipe.add_process(7, 8, 0, regressor)
+        # TODO: changed
+        # pipe.add_process(7, 8, 0, regressor)
+        # pipe.add_process(7, 8, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
 
         # Test procs to df
         pcs_df = pipe.process_chains_to_df()
@@ -836,13 +926,15 @@ class TestSpecPipe(unittest.TestCase):
         # Add process
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(5, 7, 0, roi_mean)
-        pipe.add_process(7, 8, 0, regressor)
+        # TODO: pipe.add_process(7, 8, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
 
         assert len(pipe.process_chains) == 1
 
         pipe.save_pipe_config()
 
-        pipe.add_process(7, 8, 0, regressor)
+        # TODO: pipe.add_process(7, 8, 0, regressor)
+        pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.process_chains) == 2
 
         pipe.load_pipe_config()
@@ -1412,6 +1504,7 @@ class TestSpecPipe(unittest.TestCase):
         finished_1 = TestSpecPipe.criteria_preprocessing_result(pipe)
 
         # Modeling
+        pipe.assembly()
         pipe.model_evaluation()
         time.sleep(0.1)
 
@@ -1448,6 +1541,7 @@ class TestSpecPipe(unittest.TestCase):
         finished_1 = TestSpecPipe.criteria_preprocessing_result(pipe)
 
         # Modeling
+        pipe.assembly()
         pipe.model_evaluation()
         time.sleep(0.1)
 
@@ -1772,6 +1866,7 @@ class TestSpecPipe(unittest.TestCase):
         pipe = create_test_spec_pipe(test_dir, is_regression=True)
 
         pipe.preprocessing()
+        pipe.assembly()
         time.sleep(0.1)
 
         # Test modeling with error break
@@ -1841,6 +1936,7 @@ class TestSpecPipe(unittest.TestCase):
         pipe = create_test_spec_pipe(test_dir, is_regression=False)
 
         pipe.preprocessing()
+        pipe.assembly()
         time.sleep(0.1)
 
         # Test modeling with error break

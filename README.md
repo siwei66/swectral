@@ -333,8 +333,11 @@ The instance stores and organizes the data loading configurations of an experime
     ROI statistics:
         7 - "spec1d", arbitrary 1D data of samples, e.g. 1D spectra, flattened spectra statistical metrics
     
+    Sample data:
+        8 - "assembly", sample data list for cross-sample interaction
+    
     Models:
-        8 - "model", model evaluation with standard report output as files
+        9 - "model", model evaluation with standard report output as files
     ```
 
 - The corresponding data processing workflow is:
@@ -347,7 +350,9 @@ The instance stores and organizes the data loading configurations of an experime
         ↓
     ROI statistics:       7 - "spec1d"
         ↓
-    Model evaluation:     8 - "model"
+    Sample assembly:      8 - "assembly"
+        ↓
+    Model evaluation:     9 - "model"
     ```
 The processing functions are wrapped in the pipeline according to the specified "data levels".
 Parallel processes can be added with identical "data level" and "application sequence", and they are arranged using full-factorial approach in the pipeline.
@@ -443,7 +448,7 @@ Parallel processes can be added with identical "data level" and "application seq
     ```
     Output:
     ```text
-       ID        Process_label       Input_data_level    Output_data_level    Application_sequence    Method
+       ID        Process_label       Input_data_level   Output_data_level     Application_sequence    Method
     0  2_0_%#1                       pixel_specs_array  pixel_specs_array     0                       snv
     1  2_0_%#2                       pixel_specs_array  pixel_specs_array     0                       raw
     2  5_0_%#1                       image_roi          spec1d                0                       roi_mean

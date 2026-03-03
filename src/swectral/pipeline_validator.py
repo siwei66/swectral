@@ -7,13 +7,16 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 
 # OS
 import os
+import warnings
+import dill
 
 # Typing
-from typing import Annotated, Any, Union, Optional
+from typing import Annotated, Any, Union, Optional, Callable
 
 # Basic data
 import numpy as np
 import pandas as pd
+from operator import itemgetter
 
 # Raster
 import rasterio
@@ -25,7 +28,9 @@ from .specio import (
     arraylike_validator,
     simple_type_validator,
     unc_path,
+    load_vars,
 )
+from .assembly import identity_assembly
 
 # For multiprocessing
 global ModelEva
@@ -104,9 +109,12 @@ def _dl_val(data_level: Union[str, int]) -> tuple[int, str]:
         "image_roi",
         "roi_specs",
         "spec1d",
+        # TODO: new
+        "assembly",
         "model",
     ]
-    data_level_n = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    # TODO: data_level_n = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    data_level_n = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     if type(data_level) is str:
         if data_level.lower() not in data_levels:
             raise ValueError(f"data_level must be one of {data_levels}, but got: {data_level}")
@@ -128,7 +136,7 @@ def _data_level_seq_validator(  # noqa: C901
     application_sequence: int,
     full_application_sequence: int,
     existed_process: list[tuple[str, str, str, str, int, Any, int, int]],
-) -> None:
+) -> list[tuple[str, str, str, str, int, Any, int, int]]:
     """
     Process input and output data level and application sequence validator.
     Arg 'process' is the SpecPipe.process attribute.
@@ -146,8 +154,10 @@ def _data_level_seq_validator(  # noqa: C901
     fapp_seq = full_application_sequence
 
     # Validate input data level
-    if dl_in_ind >= 8:
-        raise ValueError("Input data level cannot be 'model' or 8 (corresponding index).")
+    # TODO: if dl_in_ind >= 8:
+    if dl_in_ind >= 9:
+        # TODO: changed err msg
+        raise ValueError("Input data level cannot be 'model' or 9 (corresponding index).")
 
     # Validate output data level
     if dl_out_name == "image_roi":
@@ -167,14 +177,60 @@ def _data_level_seq_validator(  # noqa: C901
     if (application_sequence < 0) | (application_sequence > 999999):
         raise ValueError("Application sequence must be within [0, 1,000,000), " + f"got: {application_sequence}")
 
+    # TODO: Validate assembly step input data level
+    if dl_out_ind == 8:
+        if dl_in_ind < 7 or dl_in_ind > 8:
+            raise ValueError(
+                f"The input data level of 'assembly' process must be 'spec1d' or 'assembly', got: '{dl_in_name}'"
+            )
+        # Coerce model dl_in to 8 and update full app sequence if model process added
+        coerce_dl8 = False
+        for i, proc in enumerate(existed_process):
+            if proc[3] == 'model' and proc[2] == 'spec1d':
+                existed_process[i] = (
+                    proc[0],
+                    proc[1],
+                    'assembly',
+                    'model',
+                    proc[4],
+                    proc[5],
+                    proc[6] + 2000000,
+                    proc[7],
+                )
+                coerce_dl8 = True
+        if coerce_dl8:
+            warnings.warn(
+                "Input data level for newly added model processes has been automatically "
+                "set to 'assembly' because an assembly process was added.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    # TODO: Validate and correct model step input data level
+    if dl_out_ind == 9:
+        existed_assembly_procs = [proc for proc in existed_process if proc[3] == 'assembly']
+        if len(existed_assembly_procs) > 0:
+            if dl_in_ind != 8:
+                raise ValueError(
+                    "Assembly process detected. The modeling step input data level must be 8 ('assembly'), but got: "
+                    + f"{dl_in_ind} ('{dl_in_name}')."
+                )
+        else:
+            if dl_in_ind != 7:
+                raise ValueError(
+                    "No assembly process detected. The modeling step input data level must be 7 ('spec1d'), but got: "
+                    + f"{dl_in_ind} ('{dl_in_name}')."
+                )
+
     # Validate existed process labels
     # [0 Process_ID, 1 Process_label, 2 Input_data_level, 3 Output_data_level, 4 Application_sequence, 5 Method_callable, 6 _Full_app_seq, 7 _Alternative_number]  # noqa: E501
-    f_fapp_seq, l_fapp_seq = -1, np.inf
-    f_out_dl = None
-    l_in_dl = None
+    f_fapp_seq, l_fapp_seq = -1, np.inf  # fore full application sequence, later full application sequence
+    f_out_dl = None  # fore output data level
+    l_in_dl = None  # later input data level
     if len(existed_process) > 0:
+        # Identify the preceding (fore) and subsequent (later) steps
         for pr in existed_process:
-            # Previous process
+            # Preceding process
             if (pr[6] < fapp_seq) & (pr[6] > f_fapp_seq):
                 f_fapp_seq = pr[6]
                 f_out_dl = pr[3]
@@ -224,6 +280,36 @@ def _data_level_seq_validator(  # noqa: C901
                 + f"is inconsistent with the input data level '{l_in_dl}' of the subsequent process, "
                 + "they must be identical."
             )
+
+    return existed_process
+
+
+# %% Pipeline process sequence validator - validate data level and application sequence of all processes of the pipeline
+
+
+# Validate dl_in and dl_out of all existed processes
+# [0 Process_ID, 1 Process_label, 2 Input_data_level, 3 Output_data_level, 4 Application_sequence, 5 Method_callable, 6 _Full_app_seq, 7 _Alternative_number]  # noqa: E501
+@simple_type_validator
+def _pipeline_process_seq_validator(pipe_processes: list[tuple[str, str, str, str, int, Callable, int, int]]) -> None:
+    """Validate data level and application sequence of all processes of the pipeline."""
+    # Ensure current process sorted
+    processes_sorted = sorted(pipe_processes, key=itemgetter(-2))
+    # Apply sequence validator process by process
+    for proc in processes_sorted:
+        try:
+            _ = _data_level_seq_validator(
+                input_data_level=proc[2],
+                output_data_level=proc[3],
+                application_sequence=proc[4],
+                full_application_sequence=proc[-2],
+                existed_process=processes_sorted,
+            )
+        except Exception as e:
+            raise ValueError(
+                "Process configuration is incompatible with its adjacent processes.\n"
+                f"Process ID:\n{proc[0]}\n"
+                f"Process label: {proc[1]}\n"
+            ) from e
 
 
 # %% Model validators
@@ -281,7 +367,7 @@ def _regressor_validator(regressor: object) -> None:
 # Pretest_data: [img_path, test_img_path, roi_coords, test_roi_coords, roitable, spec1d]
 @simple_type_validator
 def _process_validator(  # noqa: C901
-    method: object,
+    method: Callable,
     input_data_level: Union[str, int],
     output_data_level: Union[str, int],
     *,
@@ -290,9 +376,9 @@ def _process_validator(  # noqa: C901
         tuple[str, str, str, str, list[Union[float, int]]]
     ],  # swectral.spec_exp.standalone_specs_sample  # noqa: E501
     report_directory: str,  # swectral.report_directory
-) -> object:
+) -> Callable:
     """
-    Validate process method of specified input data level before execution of entire processing chain.
+    Validate preprocessing method of specified input data level before execution of entire processing chain.
     """
     # Pretest_data validation for static typing
     if pretest_data is None:
@@ -311,7 +397,8 @@ def _process_validator(  # noqa: C901
         test_img_path = pretest_data["test_img_path"]
 
         # Test data
-        if dl_out < 8:
+        # TODO: if dl_out < 8:
+        if dl_out <= 7:
             # Validate function
             if not callable(method):
                 raise TypeError(f"Process method must be callable for non-model data levels, got type: {type(method)}")
@@ -402,8 +489,10 @@ def _process_validator(  # noqa: C901
                 testing_data = pretest_data["spec1d"]
                 assert callable(method)
                 result = method(testing_data)
+            # TODO: add new
             else:
-                raise ValueError("Input data level cannot be 'model' or 8 (corresponding index).")
+                # TODO: changed err msg
+                raise ValueError("Input data level cannot be 'model' or 9 (corresponding index).")
         else:
             # Model method is not validated here
             return method
@@ -523,7 +612,8 @@ def _process_validator(  # noqa: C901
                 "Method for one-dimensional standalone spectra cannot have output data level below 7 ('spec1d'), "
                 + f"but got level number: {dl_out}"
             )
-        if dl_out == 8:
+        # TODO: if dl_out == 8:
+        if dl_out > 7:
             # Model method is not validated here
             return method
 
@@ -561,6 +651,91 @@ def _process_validator(  # noqa: C901
             )
 
         return method
+
+
+# %% Assembly method validator
+
+
+# TODO: _assembly_validator
+# Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
+# list[tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any, arraylike_validator(ndim=1)]]]
+@simple_type_validator
+def _assembly_method_validator(
+    method: Callable,
+    input_data_level: Union[str, int],
+    output_data_level: Union[str, int],
+) -> Callable:
+    """Validate the basic functionality of provided assembly method."""  # noqa: E501
+
+    # Mock sample list
+    mock_sample_list = [
+        ("Mock_sample_id0", "sample_id0", "vgroup0", np.int8(1), np.int8(0), (5,), 32, np.array([1, 3, 5, 7, 9])),
+        ("Mock_sample_id1", "sample_id1", "vgroup0", np.int8(1), np.int8(1), (5,), 36, np.array([2, 4, 6, 8, 10])),
+        ("Mock_sample_id2", "sample_id2", "vgroup1", np.int8(1), np.int8(1), (5,), 24, np.array([0, 1, 0, 3, 5])),
+        ("Mock_sample_id3", "sample_id3", "vgroup1", np.int8(1), np.int8(1), (5,), 76, np.array([3, 9, 15, 21, 27])),
+        ("Mock_sample_id4", "sample_id4", "vgroup1", np.int8(0), np.int8(1), (5,), 5, np.array([0, 0, 0, 0, 0])),
+    ]
+
+    # Validate functionality of provided assembly method
+    try:
+        test_res = method(mock_sample_list)
+    except Exception as e:
+        raise ValueError(
+            f"Assembly method '{method.__name__}' failed during execution on validation input data."
+        ) from e
+    try:
+        _ = identity_assembly(test_res)
+    except Exception as e:
+        raise TypeError(
+            f"Assembly method '{method.__name__}' returned an invalid data structure.\n"
+            "Expected return type:\n"
+            "list[tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, 1D array-like]]"
+        ) from e
+
+    return method
+
+
+# %% Validate _sample_list_constructor resulting file integrity
+
+
+# TODO: _pre_assembly_data_validator
+@simple_type_validator
+def _pre_assembly_data_validator(
+    report_directory: str,  # swectral.report_directory
+) -> None:
+    """Runtime validate the integrity of sample data produced by _sample_list_constructor for assembly process."""  # noqa: E501
+
+    # Validate constructed (assembled) sample_list data file
+    finished_paths_path = report_directory + "Assembly/.__swectral_dill_data/.__sample_list_paths_finished.dill"
+
+    # Validate finish indicator meta file
+    if not os.path.exists(unc_path(finished_paths_path)):
+        raise FileNotFoundError(
+            "Assembled sample metadata file was not found. Preprocessing may not have completed successfully. "
+            f"Expected file path:\n{finished_paths_path}"
+        )
+
+    # Validate sample list data file
+    with open(finished_paths_path, "rb") as f:
+        finished_paths = dill.load(f)["finished_paths"]
+    for dpath in finished_paths:
+        if not os.path.exists(dpath):
+            raise FileNotFoundError(
+                "Assembled sample data file was not found. "
+                "Preprocessing may be incomplete or the output file is corrupted. "
+                f"Missing data file path:\n{dpath}"
+            )
+        # Validate sample list data integrity
+        sample_list_i = load_vars(unc_path(dpath))["chain_res"]
+        try:
+            _ = identity_assembly(sample_list_i)
+        except Exception as e:
+            raise TypeError(
+                "Invalid sample data structure detected in preprocessing output file.\n"
+                f"File path:\n{dpath}\n"
+                "Expected data type:\n"
+                "list[tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, 1D array-like]]"
+            ) from e
 
 
 # %% Helper: Pipeline output size estimation & disk available space validator

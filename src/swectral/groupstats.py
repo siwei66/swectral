@@ -491,7 +491,21 @@ def performance_metrics_summary(  # noqa: C901
         validated = False
         if dn_splited[0] == "" and len(dn_splited) == 3:
             try:
-                assert int(dn_splited[1]) == float(dn_splited[1])
+                # Preprocessing and assembly numbers
+                index_str = dn_splited[1]
+                if "_a&" in index_str:
+                    pachain_ids = index_str.split("_a&")
+                    # Validate preproc chain id
+                    preproc_id = pachain_ids[0]
+                    assert int(preproc_id) == float(preproc_id)
+                    # Validate assem chain ids
+                    assembly_ids = pachain_ids[1:]
+                    for assembly_id in assembly_ids:
+                        assembly_stepn, astepn_id = assembly_id.split("&")
+                        assert int(assembly_stepn) == float(assembly_stepn)
+                        assert int(astepn_id) == float(astepn_id)
+                else:
+                    assert int(index_str) == float(index_str)
                 validated = True
             except Exception:
                 validated = False

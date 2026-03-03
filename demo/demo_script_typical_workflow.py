@@ -52,13 +52,11 @@ if __name__ == '__main__':
     # Add baseline correction methods
     from swectral.functions import snv
     def raw(v): return v  # type: ignore
-    pipe.add_process(2, 2, 0, raw)  # noqa
-    pipe.add_process(2, 2, 0, snv)
+    pipe.add_process(2, 2, 0, [raw, snv])  # noqa
 
     # Add ROI statistics for modeling data
     from swectral import roi_mean, roi_median
-    pipe.add_process(5, 7, 0, roi_mean)  # 5 – image ROI to 7 – sample spectra
-    pipe.add_process(5, 7, 0, roi_median)
+    pipe.add_process(5, 7, 0, [roi_mean, roi_median])  # 5 – image ROI to 7 – sample spectra
 
     # Denoising
     from swectral.denoiser import LocalPolynomial
@@ -80,7 +78,7 @@ if __name__ == '__main__':
         estimators=[knn, rf], is_regression=False)
 
     # Add models
-    for model in models: pipe.add_model(model, validation_method="2-fold")  # noqa
+    pipe.add_model(models, validation_method="2-fold")  # noqa
 
     # Review the processing chains and run pipelines
     pipe.ls_chains()

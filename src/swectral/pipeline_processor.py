@@ -11,6 +11,9 @@ import os
 # Warning
 import warnings
 
+# Interface
+from tqdm import tqdm
+
 # Typing
 from typing import (
     Annotated,
@@ -21,6 +24,7 @@ from typing import (
     Union,
     ContextManager,
     overload,
+    Iterable,
 )
 from types import ModuleType
 
@@ -31,6 +35,7 @@ from datetime import datetime
 # Basic data
 import copy
 import numpy as np
+import pandas as pd
 import torch
 
 # Local
@@ -42,6 +47,7 @@ from .specio import (
     load_vars,
     simple_type_validator,
     unc_path,
+    df_to_csv,
 )
 from .pipeline_validator import (
     _target_type_validation_for_serialization,
@@ -383,8 +389,8 @@ def _preprocessing_sample(  # noqa: C901
             raise ValueError("\nNo process added")
 
         # Validate chains
-        chain_length = len(process_chains[0])
-        for chain in process_chains:
+        chain_length = len(chains[0])
+        for chain in chains:
             if len(chain) != chain_length:
                 raise ValueError(
                     f"Inconsistent steps of processing in chain: {chain} \
@@ -396,13 +402,26 @@ def _preprocessing_sample(  # noqa: C901
         # Status vector: Check previous steps,
         # once identical or previous process completed, avoid computing repeatly but use the previous result.
         # [[Step1:[preceding processes 1],[preceding processes 2],...],[Step2:...],...]
+
+        # TODO: removed
+        # model_ids = [pit[0] for pit in process if pit[3] == "model"]
+        # if len(model_ids) > 0:
+        #     n_non_preprocess_step = 1
+        # else:
+        #     n_non_preprocess_step = 0
+        # TODO: new
         model_ids = [pit[0] for pit in process if pit[3] == "model"]
-        if len(model_ids) > 0:
-            n_model_step = 1
-        else:
-            n_model_step = 0
+        assembly_ids = [pit[0] for pit in process if pit[3] == "assembly"]
+
         # Number of preprocessing steps
-        preprocess_chain_length = len(chains[0]) - n_model_step
+        # TODO: removed
+        # preprocess_chain_length = len(chains[0]) - n_non_preprocess_step
+        # TODO: new
+        n_non_preprocess_step = len(
+            [proc_id for proc_id in chains[0] if (proc_id in assembly_ids) or (proc_id in model_ids)]
+        )
+        preprocess_chain_length = len(chains[0]) - n_non_preprocess_step
+
         if preprocess_chain_length < 1:
             raise ValueError("No preprocessing process found.")
         calc_status: list[list] = [[] for _ in range(preprocess_chain_length)]
@@ -439,7 +458,7 @@ def _preprocessing_sample(  # noqa: C901
         status_results = _chain_step_processor(
             sample_data_label=sample_data_label,
             chains=chains,
-            n_model_step=n_model_step,
+            n_non_preprocess_step=n_non_preprocess_step,
             calc_status=calc_status,
             methods=methods,
             sample_data=sample_data,
@@ -538,7 +557,7 @@ def _preprocessing_sample(  # noqa: C901
 def _chain_step_processor(  # noqa: C901
     sample_data_label: str,
     chains: list,
-    n_model_step: int,
+    n_non_preprocess_step: int,
     calc_status: list[list],  # empty data container
     methods: np.ndarray,
     sample_data: dict,
@@ -559,7 +578,7 @@ def _chain_step_processor(  # noqa: C901
 ) -> list[list]:
     """Iterates the chains and steps to perform corresponding processing."""
     n_chains = len(chains)
-    n_step = len(chains[0]) - n_model_step
+    n_step = len(chains[0]) - n_non_preprocess_step
 
     # Chain-step results and its processes as result IDs
     chain_results_per_chain: list[list] = [[] for _ in range(n_chains)]
@@ -696,6 +715,11 @@ def _dump_disk_backed_data(num_result: object, data_path: str, num_type: Union[s
 def _load_disk_backed_data(handle_obj: object) -> object:
     """Load disk backed data using defined handle object."""
     if isinstance(handle_obj, dict) and handle_obj.get("__disk_backed__"):
+        if "path" in handle_obj.keys():
+            if not os.path.exists(handle_obj["path"]):
+                raise FileNotFoundError(f"Data file not found, expected path:\n{handle_obj['path']}")
+        else:
+            raise ValueError("handle 'path' is undefined, cannot load data.")
         if "loader" in handle_obj.keys():
             loader_type = handle_obj.get("loader")
             if loader_type == "numpy":
@@ -913,6 +937,346 @@ def _image_processor(
         )
     # Return path of processed image
     return output_image_path
+
+
+# %% TODO: Sample_list assembly tools
+
+
+# Basic assembly
+# TODO: Step results to modeling-ready sample_list data
+@simple_type_validator
+def _sample_list_constructor(  # noqa: C901
+    result_directory: str,
+    sample_data: list[dict[str, Any]],  # self._sample_data
+    specpipe_process: list[tuple[str, str, str, str, int, Union[Callable, object], int, int]],  # self.process
+    process_chains: list[tuple[str, ...]],  # self.process_chains
+    to_csv: bool = True,
+    show_progress: bool = False,
+    backup: bool = False,
+) -> None:
+    """
+    Convert Step_result data from file to modeling-ready sample_list data.
+    """
+    # Validate report directory
+    preprocess_result_dir = result_directory + "Preprocessing/"
+    os.makedirs(unc_path(preprocess_result_dir), exist_ok=True)
+
+    # Validate preprocessing result file paths
+    sd_paths = [
+        f"{preprocess_result_dir}Step_results/PreprocessingResult_sample_{sd['label']}.dill" for sd in sample_data
+    ]
+    for sdp in sd_paths:
+        if not os.path.exists(unc_path(sdp)):
+            raise ValueError(f"\nPreprocessing step result file path not found : \n{sdp}\n")
+
+    ## Chain results to sample_list data
+    # Get preprocess chains of all preprocessing steps
+
+    # TODO: removed
+    # pchains = []
+    # for pchain in process_chains:
+    #     if pchain[:-1] not in pchains:
+    #         pchains.append(pchain[:-1])
+
+    # TODO: new
+    # Get preprocess chains of all preprocessing steps
+    model_ids = [pit[0] for pit in specpipe_process if pit[3] == "model"]
+    assembly_ids = [pit[0] for pit in specpipe_process if pit[3] == "assembly"]
+
+    # Get pre-modeling processing chain step numbers
+    preprocess_chain_length = len(
+        [proc_id for proc_id in process_chains[0] if (proc_id not in assembly_ids) and (proc_id not in model_ids)]
+    )
+    n_non_preprocess_step = len(process_chains[0]) - preprocess_chain_length
+
+    # Get pre-modeling processing chains
+    pchains = []
+    for chain in process_chains:
+        pchain = chain[:-n_non_preprocess_step]
+        if pchain not in pchains:
+            pchains.append(pchain)
+
+    ## Loop preprocess chains across all samples and transform to modeling data
+    if show_progress:
+        print("\nConstruct chain sample list ...\nChain :")
+    # pci - process chain id
+    pre_results: list[
+        tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any, arraylike_validator(ndim=1)]]
+    ]
+    finished_paths = []
+    for pci in tqdm(range(len(pchains)), total=len(pchains), disable=(not show_progress)):
+        pchain = pchains[pci]
+        # Preprocessing results
+        pre_results = []
+        for spath in sd_paths:
+            sdata = load_vars(unc_path(spath))
+            status_results = sdata["status_results"][-1]
+            # Sample ID and sample target value
+            sample_id = sdata["ID"]
+            sample_label = sdata["label"]
+            sample_y = sdata["target"]
+            sample_vg = sdata["validation_group"]  # sample validation group
+            sample_te = sdata["test"]
+            sample_tr = sdata["train"]
+            # Sample data
+            for status_result in status_results:
+                if tuple(status_result[1]) == tuple(pchain):
+                    # Construct sample_list item
+                    step_data = _load_disk_backed_data(status_result[4])
+                    step_data_shape = np.array(step_data).shape
+                    # Validate step output data level
+                    step_dl_out = status_result[3]
+                    if step_dl_out != 7:
+                        raise ValueError("Input data level of modeling step")
+                    pre_results.append(
+                        (
+                            sample_id,
+                            sample_label,
+                            sample_vg,
+                            sample_te,
+                            sample_tr,
+                            step_data_shape,
+                            sample_y,
+                            step_data,
+                        )
+                    )  # noqa: E501
+
+        ## Save resutls to files
+        # Create file name
+        chain_name = ""
+        for proc_name in pchain:
+            chain_name = chain_name + proc_name + "-"
+        chain_name1 = f"PreprocessingChainResult_chain_ind_{str(pci)}"
+
+        # Dump results to dill
+        # chain_res == sample_list
+        # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
+        # Typing: list[tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any,arraylike_validator(ndim=1)]]]  # noqa: E501
+        res_path_dill = preprocess_result_dir + chain_name1 + ".dill"
+        dump_vars(
+            unc_path(res_path_dill),
+            {"chain_ind": str(pci), "chain_procs": pchain, "chain_res": pre_results},
+            backup=backup,
+        )
+        finished_paths.append(res_path_dill)
+
+        # Save results to CSV
+        if to_csv:
+            # Results to table (df)
+            chain_res_table = []
+            for pres in pre_results:
+                pres_data = pres[-1]
+                if isinstance(pres_data, Iterable):
+                    pres_data_tuple: tuple = tuple(pres_data)
+                else:
+                    pres_data_tuple = (pres_data,)
+                chain_res_table.append(
+                    (pres[0], str(pres[1]), str(pres[2]), pres[3], pres[4], str(pres[5]), pres[6]) + pres_data_tuple
+                )
+            arr_chain_res = np.array(chain_res_table)
+
+            # TODO: changed
+            # coln_chain_res = ["Sample_ID", "Label", "Validation_group", "Test", "Train", "X_shape", "y"] + [
+            #     f"x{i}" for i in range(arr_chain_res.shape[1] - 7)
+            #     ]
+            coln_chain_res = ["Sample_ID", "Label", "Validation_group", "Test", "Train", "X_shape", "y"] + [
+                f"x{i}" for i in range(arr_chain_res.shape[1] - 7)
+            ]
+            df_chain_res = pd.DataFrame(arr_chain_res, columns=coln_chain_res)
+            # Add chain name to table content (as first col)
+            df_chain_res = pd.concat(
+                [
+                    pd.DataFrame(
+                        [[chain_name]] + [[""]] * (df_chain_res.shape[0] - 1),
+                        columns=["Preprocessing_chain"],
+                    ),
+                    df_chain_res,
+                ],
+                ignore_index=True,
+                axis=1,
+            )
+            # Recover colnames
+            df_chain_res.columns = ["Preprocessing_chain"] + coln_chain_res
+            # Save table to CSV
+            res_path_csv = preprocess_result_dir + chain_name1 + ".csv"
+            df_to_csv(df_chain_res, res_path_csv, index=False, return_path=False)
+
+    # Dump sample_list file paths for assembly processes
+    finished_paths_path_dir = result_directory + "/Assembly/.__swectral_dill_data/"
+    os.makedirs(unc_path(finished_paths_path_dir), exist_ok=True)
+    path_file_path = finished_paths_path_dir + ".__sample_list_paths_finished.dill"
+    dump_vars(unc_path(path_file_path), {"finished_paths": finished_paths}, backup=backup)
+
+    # Add line after progress bar
+    print("")
+
+
+# TODO: Additional assembly methods
+# TODO: Sample assembly of all samples of a single preprocessing chain
+@simple_type_validator
+def _single_preprocess_assembly(
+    dpath: str,
+    assembly_result_dir: str,
+    assem_interm_path: str,
+    assem_log_dir_path: str,
+    assembly_chains: list[tuple[str, ...]],
+    specpipe_process: list[tuple[str, str, str, str, int, Union[Callable, object], int, int]],
+    n_step_choice_dict: dict[int, int],
+    final_result_only: bool,
+    backup: bool,
+) -> None:
+    """Apply the entire assembly stage on a preprocessing chain result."""
+    # Import dependencies
+    import os
+    from datetime import datetime
+    from swectral.specio import unc_path
+
+    try:
+        # Intermediate data dir
+        pc_fname_split = os.path.splitext(os.path.basename(dpath))
+
+        for stepi in range(len(assembly_chains[0])):
+            step_proc_ids = [chain[stepi] for chain in assembly_chains]
+            snum = 0
+            for proc_id in step_proc_ids:
+                _apply_step_assembly(
+                    dpath=dpath,
+                    assembly_result_dir=assembly_result_dir,
+                    assem_interm_path=assem_interm_path,
+                    stepi=stepi,
+                    snum=snum,
+                    proc_id=proc_id,
+                    specpipe_process=specpipe_process,
+                    assembly_chains=assembly_chains,
+                    n_step_choice_dict=n_step_choice_dict,
+                    backup=backup,
+                )
+                snum += 1
+            # Remove used data files after computation of current step result if final_result_only
+            if final_result_only and stepi >= 1:
+                for psnum in range(n_step_choice_dict[stepi]):
+                    # Input path - previous step
+                    input_filename = pc_fname_split[0] + f"_a&{stepi-1}&{psnum}" + pc_fname_split[1]
+                    input_path = assem_interm_path + input_filename
+                    if os.path.exists(input_path):
+                        try:
+                            os.remove(input_path)
+                        except Exception:
+                            pass
+
+        # Write a log file for the current progress to mark as finished
+        log_path = assem_log_dir_path + os.path.splitext(os.path.basename(dpath))[0]
+        with open(log_path, 'w') as f:
+            f.write("")
+    except Exception as e:
+        errorlog_dir_path = assem_interm_path + "Error_logs/"
+        os.makedirs(unc_path(errorlog_dir_path), exist_ok=True)
+        assert hasattr(datetime, 'now')
+        cts: str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        # PID for multiprocessing
+        pid = os.getpid()
+        error_log_path = errorlog_dir_path + f"error_{cts}_pid_{pid}.log"
+        # Write error log
+        err_msg = f"Failed in the assembly of '{dpath}' sample data, error message: \n\n{str(e)}"
+        with open(unc_path(error_log_path), "w") as f:
+            f.write(err_msg)
+        raise ValueError(f"Failed in the assembly of '{dpath}' sample data") from e
+
+
+# TODO: Apply a single sample assembly step
+# Process items: [0 Process_ID, 1 Process_label, 2 Input_data_level, 3 Output_data_level, 4 Application_sequence, 5 Method_callable, 6 _Full_app_seq, 7 _Alternative_number]  # noqa: E501
+@simple_type_validator
+def _apply_step_assembly(
+    dpath: str,
+    assembly_result_dir: str,
+    assem_interm_path: str,
+    stepi: int,
+    snum: int,
+    proc_id: str,
+    specpipe_process: list[tuple[str, str, str, str, int, Union[Callable, object], int, int]],
+    assembly_chains: list[tuple[str, ...]],
+    n_step_choice_dict: dict[int, int],
+    backup: bool,
+) -> None:
+    """Apply assembly method of an assembly step."""
+
+    # Imports
+    import os
+    from swectral.specio import (
+        load_vars,
+        dump_vars,
+        unc_path,
+    )
+
+    # Get process method
+    method_match = [proc[5] for proc in specpipe_process if proc[0] == proc_id]
+    if len(method_match) == 1:
+        method = method_match[0]
+        if not callable(method):
+            raise TypeError(f"Method not callable, process ID '{proc_id}'.")
+    else:
+        raise ValueError(f"Corrupted process ID '{proc_id}', {len(method_match)} match(es) found.")
+
+    # Intermediate data dir
+    pc_fname_split = os.path.splitext(os.path.basename(dpath))
+
+    # Read input sample list and process
+    # Primary assembly - in addition to basic default assembly
+    if stepi == 0:
+        # Input path - previous step
+        pc_sample_list_data = load_vars(dpath)
+        # Get sample list data
+        chain_ind = pc_sample_list_data["chain_ind"]
+        chain_procs = pc_sample_list_data["chain_procs"]
+        chain_res = pc_sample_list_data["chain_res"]
+        # Process sample_list
+        chain_ind = chain_ind + f"_a&{stepi}&{snum}"
+        chain_procs = chain_procs + (proc_id,)
+        chain_res = method(chain_res)
+        # Output path - current step
+        output_filename = pc_fname_split[0] + f"_a&{stepi}&{snum}" + pc_fname_split[1]
+        if stepi == len(assembly_chains[0]) - 1:
+            output_path = assembly_result_dir + output_filename
+        else:
+            output_path = assem_interm_path + output_filename
+        # Dump processed sample_list
+        dump_vars(
+            unc_path(output_path),
+            {"chain_ind": chain_ind, "chain_procs": chain_procs, "chain_res": chain_res},
+            backup=backup,
+        )
+
+    # Secondary assembly
+    else:
+        # Loop previous step result and compute result of current step
+        for psnum in range(n_step_choice_dict[stepi]):
+            # Input path - previous step
+            input_filename = pc_fname_split[0] + f"_a&{stepi-1}&{psnum}" + pc_fname_split[1]
+            input_path = assem_interm_path + input_filename
+            pc_sample_list_data = load_vars(input_path)
+            # Get sample list data
+            chain_ind = pc_sample_list_data["chain_ind"]
+            chain_procs = pc_sample_list_data["chain_procs"]
+            chain_res = pc_sample_list_data["chain_res"]
+            # Process sample_list
+            chain_ind = chain_ind + f"_a&{stepi}&{snum}"
+            chain_procs = chain_procs + (proc_id,)
+            chain_res = method(chain_res)
+            # Output path - current step
+            output_filename = pc_fname_split[0] + f"_a&{stepi}&{snum}" + pc_fname_split[1]
+            if stepi == len(assembly_chains[0]) - 1:
+                output_path = assembly_result_dir + output_filename
+            else:
+                output_path = assem_interm_path + output_filename
+            # Dump processed sample_list
+            dump_vars(
+                unc_path(output_path),
+                {"chain_ind": chain_ind, "chain_procs": chain_procs, "chain_res": chain_res},
+                backup=backup,
+            )
+
+
+# %% Model method wrapper, sample_list as method input
 
 
 # Model method wrapper, sample_list as method input
@@ -1154,7 +1518,7 @@ def _model_evaluator(  # noqa: C901
             )
         # Modeling
         # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
-        if dl_in_ind == 7:
+        if dl_in_ind == 7 or dl_in_ind == 8:
             # Regression
             if model_methodi.is_regression:
                 model_methodi.evaluation(
@@ -1174,7 +1538,10 @@ def _model_evaluator(  # noqa: C901
                     silent_all=silent_all,
                 )
         else:
-            raise ValueError(f"Model only accepts data level 'spec1d' as input, but got: {dl_in_name}")
+            raise ValueError(
+                "Model only accepts input data level 7 ('spec1d') or 8 ('assembly'),"
+                + f"but got: {dl_in_ind} ('{dl_in_name}')"
+            )
 
     # Update progress
     log_path = model_report_dir + "modeling_progress_log.dill"

@@ -21,16 +21,12 @@ __all__ = [
     "combine_transformer_regressor",
     "factorial_transformer_chains",
     "IdentityTransformer",
-    ### SpecIO functions
-    "search_file",
-    "envi_roi_coords",
-    "shp_roi_coords",
-    "roi_to_envi",
-    "roi_to_shp",
     ### Raster operation
     "croproi",
     "resample_roi",
     "pixel_apply",
+    ### Assembly tools
+    "blend_samples",
     ## Spectral statistics tools
     ### ROI statistics
     "round_digit",
@@ -48,6 +44,12 @@ __all__ = [
     "roi_median",
     "spectral_angle",
     "spectral_angle_arr",
+    ### SpecIO functions
+    "search_file",
+    "envi_roi_coords",
+    "shp_roi_coords",
+    "roi_to_envi",
+    "roi_to_shp",
     ## Example data
     "create_example_raster",
     "create_example_roi_xml",
@@ -95,7 +97,7 @@ from .roistats import (
 )
 
 ## Cross-sample integration
-from .sample_aug import resample_roi
+from .sample_aug import resample_roi, blend_samples
 
 ## Spectral experiment data management
 from .specexp import SpecExp

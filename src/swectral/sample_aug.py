@@ -6,7 +6,7 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 """
 
 # Typing
-from typing import Optional, Union, Annotated, Any
+from typing import Optional, Union, Annotated, Any, Callable
 
 # Basic data
 import numpy as np
@@ -120,8 +120,160 @@ def resample_roi(  # noqa: C901
 # %% In-validation group & cross-sample synthetic sample generator
 
 
+# Blend samples generator
 @simple_type_validator
-def _remix_samples(  # noqa: C901
+def blend_samples(  # noqa: C901
+    n_samples: int,
+    is_regression: bool,
+    use_validation_group: bool = True,
+    abs_tol: Union[float, int, None] = None,
+    rel_tol: Optional[float] = None,
+    random_state: Optional[int] = None,
+) -> Callable:
+    """
+    Generator for creating a sample blending process using convex combinations.
+
+    The generator returns a callable that accepts and returns a list of tuple with the same structure::
+
+            (
+                sample_id : str,
+                sample_label : str,
+                validation_group : str,
+                test_mask : np.int8,
+                train_mask : np.int8,
+                original_shape : tuple of int,
+                target_value : Any,
+                predictors : array-like of shape (n_features,)
+            )
+
+    Synthetic predictors are computed as Dirichlet-weighted averages of an anchor sample and one or more valid neighbors.
+    For regression, targets are blended using the same weights; for classification, the anchor target is retained.
+
+    Samples are generated either per validation group (restricted to groups with at least one non-lonely sample) or globally across the training pool.
+
+    It can be registered using ``add_process`` or used within ``build_pipelines`` with::
+
+        - ``input_data_level`` set to either ``7`` (``"spec1d"``) or ``8`` (``"assembly"``)
+        - ``output_data_level`` set to ``8`` (``"assembly"``)
+
+    Parameters
+    ----------
+    n_samples : int
+        Total number of synthetic samples to generate.
+        When ``use_validation_group=True``, this value is distributed approximately evenly across eligible validation groups.
+
+    is_regression : bool
+        If ``True``, regression mode is used and targets are blended numerically.
+
+        If ``False``, classification mode is used and the synthetic target equals to the anchor target.
+
+    use_validation_group : bool, optional
+        If ``True``, synthetic samples are generated independently within each validation group, restricted to groups containing at least one anchor with valid neighbors.
+
+        If ``False``, the full training pool is used globally.
+
+        Default is ``True``.
+
+    abs_tol : float or int or None, optional
+        Absolute tolerance for regression neighbor selection.
+
+        If ``None``, no absolute tolerance constraint is applied.
+        Default is ``None``.
+
+    rel_tol : float or None, optional
+        Relative tolerance for regression neighbor selection.
+
+        If ``None``, no relative tolerance constraint is applied.
+        Default is ``None``.
+
+    random_state : int or None, optional
+        Seed used to initialize the NumPy random number generator for reproducibility.
+
+        If ``None``, a random seed is used. Default is ``None``.
+
+    See Also
+    --------
+    SpecPipe.add_process
+    SpecPipe.build_pipeline
+
+    Returns
+    -------
+    Callable
+        A pipeline-compatible blending process callable.
+
+    Examples
+    --------
+    Incorporation into pipeline, for SpecPipe instance ``pipe``::
+
+        >>> blend = blend_samples(n_samples=100, is_regression=False)
+        >>> pipe.add_process(7, 8, 0, blend)
+    """  # noqa: E501
+    return _BlendSamples(
+        n_samples=n_samples,
+        is_regression=is_regression,
+        use_validation_group=use_validation_group,
+        abs_tol=abs_tol,
+        rel_tol=rel_tol,
+        random_state=random_state,
+    ).blend_samples
+
+
+# Blend samples
+class _BlendSamples:
+    """Pipeline wrapper for ``_blend_samples``."""
+
+    @simple_type_validator
+    def __init__(
+        self,
+        n_samples: int,
+        is_regression: bool,
+        use_validation_group: bool = True,
+        abs_tol: Union[float, int, None] = None,
+        rel_tol: Optional[float] = None,
+        random_state: Optional[int] = None,
+    ) -> None:
+        self.n_samples: int = n_samples
+        self.is_regression: bool = is_regression
+        self.use_validation_group: bool = use_validation_group
+        self.abs_tol: Union[float, int, None] = abs_tol
+        self.rel_tol: Optional[float] = rel_tol
+        self.random_state: Optional[int] = random_state
+
+    def blend_samples(
+        self,
+        sample_data: list[
+            tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any, arraylike_validator(ndim=1)]]
+        ],
+    ) -> list[
+        tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[np.ndarray, arraylike_validator(ndim=1)]]
+    ]:
+        result: list[
+            tuple[
+                str,
+                str,
+                str,
+                np.int8,
+                np.int8,
+                tuple[int, ...],
+                Any,
+                Annotated[np.ndarray, arraylike_validator(ndim=1)],
+            ]
+        ] = _blend_samples(
+            sample_data=sample_data,
+            n_samples=self.n_samples,
+            is_regression=self.is_regression,
+            use_validation_group=self.use_validation_group,
+            abs_tol=self.abs_tol,
+            rel_tol=self.rel_tol,
+            random_state=self.random_state,
+        )
+        return result
+
+
+# Blend samples
+# Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
+@simple_type_validator
+def _blend_samples(  # noqa: C901
     sample_data: list[
         tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any, arraylike_validator(ndim=1)]]
     ],
@@ -135,10 +287,17 @@ def _remix_samples(  # noqa: C901
     tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[np.ndarray, arraylike_validator(ndim=1)]]
 ]:
     """
-    Remix synthetic samples for data augmentation.
-    Samples are generated for groups with non-lonely samples or globally.
-    The generation uses a randomly weighted avg for predictors and numeric targets.
-    """
+    Generate synthetic samples by blending training instances via convex combinations.
+
+    Synthetic predictors are computed as Dirichlet-weighted averages of an anchor sample and one or more valid neighbors.
+    For regression, targets are blended using the same weights; for classification, the anchor target is retained.
+
+    Samples are generated either per validation group (restricted to groups with at least one non-lonely sample) or globally across the training pool.
+    """  # noqa: E501
+
+    # Import dependencies
+    import numpy as np
+
     # Validate random state
     if random_state is None:
         random_state = np.random.randint(0, np.iinfo(np.int32).max)
@@ -190,11 +349,11 @@ def _remix_samples(  # noqa: C901
                     else:
                         # Regression - find within thresholds
                         diff = abs(target - anchor_target)
-                        denom = max(abs(anchor_target), abs(target))
+                        denom = max(abs(anchor_target), abs(target), 1e-12)
 
                         is_within_abs = (abs_tol is None) or (diff <= abs_tol)
                         # Validate target == 0
-                        is_within_rel = (rel_tol is None) or (denom == 0) or (diff / denom <= rel_tol)
+                        is_within_rel = (rel_tol is None) or (denom == 1e-12) or (diff / denom <= rel_tol)
 
                         if is_within_abs and is_within_rel:
                             neighbors.append(potential_neighbor)
@@ -256,4 +415,4 @@ def _remix_samples(  # noqa: C901
             k += 1
             n_sync_sample += 1
 
-    return sync_sample_data
+    return sample_data + sync_sample_data

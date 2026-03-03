@@ -136,9 +136,12 @@ The defined data levels in SpecPipe is:
 
         7 - 'spec1d', arbitray 1D data extracted from roispecs or standalone 1D spectra from spectrascopy
 
+    Sample data:
+        8 - "assembly", sample data list for cross-sample interaction
+
     Models:
 
-        8 - 'model', model evaluation with standard reports in files, only as output level.
+        9 - 'model', model evaluation with standard reports in files, only as output level.
 
 A process method is wrapped according to its data level.
 Parallel processes with same data levels and application sequences are arranged using full-factorial approach.
@@ -225,7 +228,7 @@ svr = SVR()
 
 # Add model using add_process
 pipe.add_process("spec1d", "model", 1, linear_regressor, validation_method="10-fold")
-pipe.add_process(7, 8, 1, rf_regressor, validation_method="10-fold")
+pipe.add_process(7, 9, 1, rf_regressor, validation_method="10-fold")
 
 # Add model using add_model
 pipe.add_model(knn_regressor, validation_method="10-fold")

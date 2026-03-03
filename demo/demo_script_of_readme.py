@@ -7,13 +7,15 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 
 # Real-world data demo
 
+# %% -------------------------------------------------------------------------------------------------------------------
+
 # 1. Data preparation
 # Set data directory path
 import os
 import shutil
 
 # Setup a directory for demo
-demo_dir = os.getcwd() + "/SpecPipeDemo/"
+demo_dir = os.getcwd() + "/SpecPipeDemoReadme/"
 
 if os.path.exists(demo_dir):
     shutil.rmtree(demo_dir)
@@ -116,7 +118,7 @@ exp.ls_labels()["Label"]
 # List target value dataframe
 targets = exp.ls_sample_targets()
 
-# Set the leaf number as target values
+# Set the leaf sequence number as target values
 targets["Target_value"] = [f"leaf_{labl[0]}" for labl in targets['Label']]  # type: ignore
 
 # Load target values from updated target dataframe
@@ -126,6 +128,7 @@ exp.sample_targets_from_df(targets)
 exp.ls_targets()[["Label", "Target_value"]]
 
 
+# %% -------------------------------------------------------------------------------------------------------------------
 # 3. Design testing pipeline
 
 # 3.1 Create processing pipeline
@@ -231,6 +234,8 @@ for model in models:
 pipe.ls_model()
 
 
+# %% -------------------------------------------------------------------------------------------------------------------
+
 # 4 Run pipeline
 
 # Check processing chains with method id
@@ -243,6 +248,9 @@ pipe.run()
 # pipe.run(resume=True)
 # If the implementation is interrupted or forcibly terminated,
 # running the pipeline again with `resume=True` to continue from last completed step.
+
+
+# %% -------------------------------------------------------------------------------------------------------------------
 
 # 5 Check results
 
@@ -309,7 +317,7 @@ pipe_reg.spec_exp = exp_reg
 # Fittable feature engineering models
 from sklearn.feature_selection import f_regression  # type: ignore
 
-selector1_reg = SelectKBest(f_regression, k=5)  # Select 5 features
+selector1_reg = SelectKBest(f_regression, k=7)  # Select 7 of 46 features
 
 # Add regressors to the pipeline
 from sklearn.ensemble import RandomForestRegressor  # type: ignore

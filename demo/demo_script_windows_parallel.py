@@ -172,7 +172,7 @@ if __name__ == '__main__':
     # n_processor = -2: uses maximal available CPUs minus 1 processors on all platforms
     pipe.run(n_processor=-2, model_test_coverage=0.1)
 
-    # %% ---------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # 5 Regression Case
 
     # Create a directory for regression results
