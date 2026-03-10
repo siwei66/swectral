@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Swectral - Basic usage demonstration from old README.md
+Swectral - Simple demonstration from new README.md
 
 Copyright (c) 2025 Siwei Luo. MIT License.
 """
 
 # Real-world data demo
 
-# %% -------------------------------------------------------------------------------------------------------------------
+# %% Data preparation --------------------------------------------------------------------------------------------------
 
 # 1. Data preparation
 # Set data directory path
@@ -37,7 +37,7 @@ report_dir = demo_dir + "/demo_results_classification/"
 os.makedirs(report_dir)
 
 
-# %% -------------------------------------------------------------------------------------------------------------------
+# %% Configure your experiment data ------------------------------------------------------------------------------------
 
 # 2. Configure your experiment data
 
@@ -47,50 +47,19 @@ from swectral import SpecExp
 
 exp = SpecExp(report_dir)
 
-# Check report directory
-exp.report_directory
-
-
-# 2.2. Experiment group management
-# Add experiment groups
-exp.add_groups(['group_1', 'group_2', 'group_3'])
-
-# Check group
-exp.groups
-exp.ls_groups()
-
-# Remove a group
-exp.rm_group('group_3')
-
+# 2.2. Add experiment groups
+exp.add_groups(['group_1', 'group_2'])
 
 # 2.3. Raster image management
 # Add raster images
 exp.add_images_by_name(image_name="demo.", image_directory=data_dir, group="group_1")
 exp.add_images_by_name("demo.", data_dir, "group_2")
 
-# Check added images
-exp.ls_images()
-
 
 # 2.4. Region of interest (ROI) management
 # Load image ROIs using suffix to image names
 exp.add_rois_by_suffix(roi_filename_suffix="_[12].xml", search_directory=data_dir, group="group_1")
 exp.add_rois_by_suffix("_[345].xml", data_dir, "group_2")
-
-# Remove ROIs by name
-exp.rm_rois(roi_name='5_5')
-
-# Remove ROIs by source file name
-exp.rm_rois(roi_source_file_name='demo_5.xml')
-
-# Load ROIs to a image using ROI files by paths
-exp.add_rois_by_file([f"{data_dir}/demo_5.xml"], image_name="demo.tiff", group="group_2")
-
-# Check added ROIs
-exp.ls_rois()
-
-# Check sample ROIs
-exp.ls_rois_sample()
 
 # Show raster RGB preview with associated ROIs
 exp.show_image("demo.tiff", "group_1", rgb_band_index=(19, 12, 6), output_path=report_dir + "demo_rast_rgb1.png")
@@ -110,9 +79,6 @@ labels.iloc[:, 1] = exp.ls_rois_sample(return_dataframe=True, print_result=False
 # Set sample labels using the updated label dataframe
 exp.sample_labels = labels  # type: ignore
 
-# Check new sample labels
-exp.ls_labels()["Label"]
-
 # 2.5.2 Set target values
 
 # List target value dataframe
@@ -128,7 +94,8 @@ exp.sample_targets_from_df(targets)
 exp.ls_targets()[["Label", "Target_value"]]
 
 
-# %% -------------------------------------------------------------------------------------------------------------------
+# %% Design testing pipeline -------------------------------------------------------------------------------------------
+
 # 3. Design testing pipeline
 
 # 3.1 Create processing pipeline
@@ -138,18 +105,9 @@ pipe = SpecPipe(exp)
 
 
 # 3.2 Image processing
-
-
 # Create some image processing functions
 # Standard normal variate
-def snv(v):  # type: ignore
-    import numpy as np
-
-    vmean = np.mean(v, axis=1, keepdims=True)
-    vstd = np.std(v, axis=1, keepdims=True)
-    vstd[vstd == 0] = 1e-10
-    snv = (v - vmean) / vstd
-    return snv
+from swectral.functions import snv
 
 
 # Compared with raw data for example
@@ -157,49 +115,11 @@ def raw(v):  # type: ignore
     return v
 
 
-# Add these process to the pipeline
-pipe.add_process(
-    input_data_level="pixel_specs_array",
-    output_data_level="pixel_specs_array",
-    application_sequence=0,
-    method=snv,
-)
-pipe.add_process(2, 2, 0, raw)
-
 # 3.3 ROI statistics
 # Import some ROI spectral statistic metrics
 from swectral import roi_mean, roi_median
 
-# Add these process to the pipeline
-pipe.add_process(
-    input_data_level="image_roi",
-    output_data_level="spec1d",
-    application_sequence=0,
-    method=roi_mean,
-)
-pipe.add_process(5, 7, 0, roi_median)
-
-
-# 3.4 Sample data wrangling
-# Create a function to remove nan and inf values
-import numpy as np
-
-
-def replace_nan(v: np.ndarray, np=np) -> np.ndarray:  # type: ignore
-    return np.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)  # type: ignore
-
-
-# Add the process to the pipeline
-pipe.add_process('spec1d', 'spec1d', 0, replace_nan)
-
-# Check all added processes
-pipe.ls_process()
-
-# Remove added processes from the pipeline
-pipe.rm_process(method='replace_nan')
-
-
-# 3.5 Add models to the pipeline
+# 3.4 Add models to the pipeline
 # Fittable feature engineering models
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import SelectKBest, f_classif
@@ -226,33 +146,32 @@ models = factorial_model_chains(
     is_regression=False
 )
 
-# Add models
-for model in models:
-    pipe.add_model(model, validation_method="2-fold")
+# 3.5 Compose pipelines
 
-# Check added models
-pipe.ls_model()
-
-
-# %% -------------------------------------------------------------------------------------------------------------------
-
-# 4 Run pipeline
+pipe.build_pipeline(
+    [
+        # 1 Image-wide baseline correction
+        ((2, 2), [raw, snv]),
+        # 2 ROI statistics
+        ((5, 7), [roi_mean, roi_median]),
+        # 3 Models (Feature selector included)
+        ((7, 9), models, {'validation_method': '2-fold'})
+    ]
+)
 
 # Check processing chains with method id
 pipe.ls_chains()
 
-# Run pipeline
+
+# %% Run pipelines -----------------------------------------------------------------------------------------------------
+
+# 4 Run pipelines
 pipe.run()
 
-# Enable resume after interruption
-# pipe.run(resume=True)
-# If the implementation is interrupted or forcibly terminated,
-# running the pipeline again with `resume=True` to continue from last completed step.
 
+# %% Check classification results --------------------------------------------------------------------------------------
 
-# %% -------------------------------------------------------------------------------------------------------------------
-
-# 5 Check results
+# 5 Check classification results
 
 # Retrieve reports in console
 result_summary = pipe.report_summary()
@@ -269,10 +188,9 @@ chain_results[0].keys()
 chain_results[0]['ROC_curve']
 
 
-# %% -------------------------------------------------------------------------------------------------------------------
+# %% Regression Case ---------------------------------------------------------------------------------------------------
 
 # 6 Regression Case
-
 # 6.1 Create a directory for regression results
 report_dir_reg = demo_dir + "/demo_results_regression/"
 if not os.path.exists(report_dir_reg):
@@ -311,7 +229,7 @@ exp_reg.ls_targets()[["Label", "Target_value", "Validation_group"]]
 pipe_reg.ls_model()
 pipe_reg.rm_model()
 
-# Update the pipeline
+# Update the pipelines
 pipe_reg.spec_exp = exp_reg
 
 # Fittable feature engineering models
@@ -319,7 +237,7 @@ from sklearn.feature_selection import f_regression  # type: ignore
 
 selector1_reg = SelectKBest(f_regression, k=7)  # Select 7 of 46 features
 
-# Add regressors to the pipeline
+# Add regressors to the pipelines
 from sklearn.ensemble import RandomForestRegressor  # type: ignore
 from sklearn.neighbors import KNeighborsRegressor  # type: ignore
 
@@ -334,26 +252,15 @@ models_reg = factorial_model_chains(
     is_regression=True
 )
 
-
 # Add models
-# Skip time-consuming influence analysis
-for model in models_reg:
-    # pipe_reg.add_model(model, validation_method="2-fold")
-    pipe_reg.add_model(model, validation_method="2-fold", influence_analysis_config=None)
-
-# Check models
-pipe_reg.ls_model()
+pipe_reg.add_model(models_reg, validation_method="2-fold")
 
 
-# 6.4 Check and run new pipeline
-# Check processing chains and run the pipeline
-pipe_reg.ls_chains()
-
-# Run regression pipeline
+# 6.4 Run new regression pipelines
 pipe_reg.run()
 
 
-# 6.5 Check results of a regression pipeline
+# 6.5 Check regression results
 
 # Retrieve reports in console
 result_summary_reg = pipe_reg.report_summary()
