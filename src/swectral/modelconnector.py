@@ -65,7 +65,10 @@ def factorial_model_chains(  # noqa: C901
     Parameters
     ----------
     step_trainable_processors : tuple of (list of object, dict mapping str to object, or None)
-        Data preprocessing model instance of each step.
+        Data preprocessing model instance of each step. Valid inputs for each element include:
+
+            - sklearn-style transformers implementing `fit` and `transform`.
+            - imblearn-style resamplers implementing `fit_resample`.
 
         Customize trainable processor name using dictionary input as {custom_name : trainable_processor}.
 

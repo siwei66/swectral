@@ -10,3 +10,4 @@ I/O utilities
    swectral.shp_roi_coords
    swectral.roi_to_envi
    swectral.roi_to_shp
+   swectral.raster_rgb_preview

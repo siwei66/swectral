@@ -11,7 +11,7 @@ API Reference
    denoiser
    spectral_indices
    model_combiners
-   raster_operations
    data_augmentation
+   raster_operations
    io_utilities
    demo_data_tools
