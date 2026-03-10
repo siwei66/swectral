@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Swectral - Simple demonstration from new README.md
+Swectral - Simple demonstration from README.md
 
 Copyright (c) 2025 Siwei Luo. MIT License.
 """

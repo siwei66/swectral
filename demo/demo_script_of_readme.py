@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Swectral - Basic usage demonstration from old README.md
+Swectral - Basic usage demonstration (of old README.md)
 
 Copyright (c) 2025 Siwei Luo. MIT License.
 """
@@ -227,19 +227,40 @@ models = factorial_model_chains(
 )
 
 # Add models
-for model in models:
-    pipe.add_model(model, validation_method="2-fold")
+pipe.add_model(models, validation_method="2-fold")
 
 # Check added models
 pipe.ls_model()
+
+# Check processing chains with method id
+pipe.ls_chains()
+
+
+# 3.6 Alternative fast pipeline construction
+
+# Create a new instance for the example
+pipe1 = SpecPipe(exp)
+
+# Compose pipelines (Compose the same pipelines as above in a single call)
+pipe1.build_pipeline(
+    [
+        # 1 Image-wide baseline correction
+        ((2, 2), [raw, snv]),
+        # 2 ROI statistics
+        ((5, 7), [roi_mean, roi_median]),
+        # 3 Sample data wrangling
+        ((7, 7), [replace_nan]),
+        # 4 Models (Feature selector included)
+        ((7, 9), models, {'validation_method': '2-fold'})
+    ]
+)
+
+pipe1.ls_chains()
 
 
 # %% -------------------------------------------------------------------------------------------------------------------
 
 # 4 Run pipeline
-
-# Check processing chains with method id
-pipe.ls_chains()
 
 # Run pipeline
 pipe.run()
@@ -337,9 +358,8 @@ models_reg = factorial_model_chains(
 
 # Add models
 # Skip time-consuming influence analysis
-for model in models_reg:
-    # pipe_reg.add_model(model, validation_method="2-fold")
-    pipe_reg.add_model(model, validation_method="2-fold", influence_analysis_config=None)
+# pipe_reg.add_model(model, validation_method="2-fold")
+pipe_reg.add_model(models_reg, validation_method="2-fold", influence_analysis_config=None)
 
 # Check models
 pipe_reg.ls_model()
