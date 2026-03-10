@@ -32,15 +32,41 @@ from swectral.sample_aug import resample_roi, _blend_samples, blend_samples
 class TestResampleROI:
 
     @staticmethod
+    def test_closed_shape_output() -> None:
+        """Verify returned polygon coordinate pairs are closed."""
+        roi_coords = [[(0, 0), (6, 0), (6, 2), (2, 2), (2, 6), (0, 6), (0, 0)]]
+        resolution = 1
+        coverage = 0.4
+
+        result_coords = resample_roi(roi_coords, resolution, coverage)
+
+        for part in result_coords:
+            assert part[0] == part[-1]
+
+    @staticmethod
+    def test_float_coords() -> None:
+        """Verify all coordinates are in float."""
+        roi_coords = [[(0, 0), (6, 0), (6, 2), (2, 2), (2, 6), (0, 6), (0, 0)]]
+        resolution = 1
+        coverage = 0.4
+
+        result_coords = resample_roi(roi_coords, resolution, coverage)
+
+        for part in result_coords:
+            for pair in part:
+                assert isinstance(pair[0], float)
+                assert isinstance(pair[1], float)
+
+    @staticmethod
     def test_reproducibility() -> None:
         """Test reproducibility using random state."""
-        roi = [[(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)]]
-        res = 2
-        ratio = 0.5
+        roi_coords = [[(0, 0), (6, 0), (6, 2), (2, 2), (2, 6), (0, 6), (0, 0)]]
+        resolution = 1
+        coverage = 0.4
         seed = 42
 
-        output1 = resample_roi(roi, res, ratio, random_state=seed)
-        output2 = resample_roi(roi, res, ratio, random_state=seed)
+        output1 = resample_roi(roi_coords, resolution, coverage, random_state=seed)
+        output2 = resample_roi(roi_coords, resolution, coverage, random_state=seed)
 
         assert output1 == output2
 
@@ -61,27 +87,27 @@ class TestResampleROI:
     @staticmethod
     def test_coverage_ratio_error() -> None:
         """Test for invalid coverage ratios."""
-        roi = [[(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)]]
+        roi_coords = [[(0, 0), (6, 0), (6, 2), (2, 2), (2, 6), (0, 6), (0, 0)]]
 
         with pytest.raises(ValueError, match="coverage_ratio must be between 0 and 1"):
-            resample_roi(roi, 1, 1.5)
+            resample_roi(roi_coords, 1, 1.5)
 
         with pytest.raises(ValueError, match="coverage_ratio must be between 0 and 1"):
-            resample_roi(roi, 1, -0.1)
+            resample_roi(roi_coords, 1, -0.1)
 
     @staticmethod
     def test_resolution_too_large() -> None:
         """Test edge cases when resolution exceeds the smallest dimension of the ROI."""
-        roi = [[(0, 0), (2, 0), (2, 2), (0, 2), (0, 0)]]
+        roi_coords = [[(0, 0), (2, 0), (2, 2), (0, 2), (0, 0)]]
 
         with pytest.raises(ValueError, match="Resolution 3 is too large"):
-            resample_roi(roi, 3, 0.5)
+            resample_roi(roi_coords, 3, 0.5)
 
     @staticmethod
     def test_merged_output_structure() -> None:
         """Test the output type."""
-        roi = [[(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)]]
-        result = resample_roi(roi, 2, 0.2)
+        roi_coords = [[(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)]]
+        result = resample_roi(roi_coords, 2, 0.2)
 
         assert isinstance(result, list)
         assert isinstance(result[0], list)
@@ -91,10 +117,10 @@ class TestResampleROI:
     @staticmethod
     def test_multipart_roi_input() -> None:
         """Test functionality for multi-part multipolygon ROIs."""
-        roi = [[(0, 0), (4, 0), (4, 4), (0, 4), (0, 0)], [(10, 10), (14, 10), (14, 14), (10, 14), (10, 10)]]
-        result = resample_roi(roi, 1, 0.1)
+        roi_coords = [[(0, 0), (4, 0), (4, 4), (0, 4), (0, 0)], [(10, 10), (14, 10), (14, 14), (10, 14), (10, 10)]]
+        result = resample_roi(roi_coords, 1, 0.1)
 
-        master = MultiPolygon([Polygon(p) for p in roi])
+        master = MultiPolygon([Polygon(p) for p in roi_coords])
         for part in result:
             assert master.contains(Polygon(part))
 

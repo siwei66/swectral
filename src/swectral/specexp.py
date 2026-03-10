@@ -8,7 +8,8 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 # OS
 import os
 from pathlib import Path
-import dill
+
+# import dill
 from copy import deepcopy
 
 # Warning
@@ -27,6 +28,12 @@ import pandas as pd
 # Interface
 from tqdm import tqdm
 
+# Functions
+from functools import partial
+
+# Multiprocessing
+from pathos.multiprocessing import ProcessingPool, cpu_count
+
 # Local
 from .specio import (
     arraylike_validator,
@@ -37,9 +44,13 @@ from .specio import (
     shp_roi_coords,
     simple_type_validator,
     unc_path,
+    dump_dill,
+    load_dill,
+    df_to_csv,
+    df_from_csv,
 )
 from .specexp_vis import raster_rgb_preview
-from .sample_aug import resample_roi
+from .specexp_processor import _roi_subset_augmentation_core
 
 
 # %% Spectral Experiment Class - SpecExp
@@ -55,7 +66,7 @@ class SpecExp:
     Attributes
     ----------
     report_directory : str
-        Root directory for reports.
+        Root directory where reports are stored.
 
     log_loading : bool
         Whether configuration logging is enabled. Default is True.
@@ -239,7 +250,14 @@ class SpecExp:
     """
 
     @simple_type_validator
-    def __init__(self, report_directory: str, log_loading: bool = False) -> None:
+    def __init__(
+        self,
+        report_directory: str,
+        log_loading: bool = False,
+        *,
+        _space_wait_timeout: int = 6,
+        _reserve_free_pct: float = 5.0,
+    ) -> None:
         # log_loading
         self._log_loading: bool = log_loading
 
@@ -303,6 +321,13 @@ class SpecExp:
 
         # Creating time
         self._create_time = datetime.now().strftime("created_at_%Y-%m-%d_%H-%M-%S")
+
+        # Saving parameters (internal)
+        self._space_wait_timeout: int = _space_wait_timeout
+        self._reserve_free_pct: float = _reserve_free_pct
+
+        # Internal use for high-performance processing
+        self.__roi_id_to_index: Optional[dict[str, int]] = None
 
     ### Property methods
     ## Setters with validation
@@ -821,8 +846,27 @@ class SpecExp:
             if not os.path.isdir(unc_path(report_dir)):
                 os.makedirs(unc_path(report_dir))
             # Save updating reports
-            df_all.to_csv(unc_path(report_dir + "All_loaded_images_" + cts + ".csv"), index=False)
-            df_load_report.to_csv(unc_path(report_dir + "Loaded_images_" + cts + ".csv"), index=False)
+            # TODO: changed
+            # df_all.to_csv(unc_path(report_dir + "All_loaded_images_" + cts + ".csv"), index=False)
+            # df_load_report.to_csv(unc_path(report_dir + "Loaded_images_" + cts + ".csv"), index=False)
+            df_to_csv(
+                dataframe=df_all,
+                csv_path=unc_path(report_dir + "All_loaded_images_" + cts + ".csv"),
+                index=False,
+                space_wait_timeout=self._space_wait_timeout,
+                reserve_free_pct=self._reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
+            df_to_csv(
+                dataframe=df_load_report,
+                csv_path=unc_path(report_dir + "Loaded_images_" + cts + ".csv"),
+                index=False,
+                space_wait_timeout=self._space_wait_timeout,
+                reserve_free_pct=self._reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
     # Add raster image paths to an experiment group
     # Format of associated attribute:
@@ -1766,8 +1810,27 @@ class SpecExp:
             # Report directory
             if self.log_loading:
                 # Save updating reports
-                df_all.to_csv(unc_path(report_dir + "All_loaded_ROIs_" + cts + ".csv"), index=False)
-                df_load_report.to_csv(unc_path(report_dir + "Loaded_ROIs_" + cts + ".csv"), index=False)
+                # TODO: changed
+                # df_all.to_csv(unc_path(report_dir + "All_loaded_ROIs_" + cts + ".csv"), index=False)
+                # df_load_report.to_csv(unc_path(report_dir + "Loaded_ROIs_" + cts + ".csv"), index=False)
+                df_to_csv(
+                    dataframe=df_all,
+                    csv_path=unc_path(report_dir + "All_loaded_ROIs_" + cts + ".csv"),
+                    index=False,
+                    space_wait_timeout=self._space_wait_timeout,
+                    reserve_free_pct=self._reserve_free_pct,
+                    min_sec_random_wait=5.0,
+                    max_sec_random_wait=5.0,
+                )
+                df_to_csv(
+                    dataframe=df_load_report,
+                    csv_path=unc_path(report_dir + "Loaded_ROIs_" + cts + ".csv"),
+                    index=False,
+                    space_wait_timeout=self._space_wait_timeout,
+                    reserve_free_pct=self._reserve_free_pct,
+                    min_sec_random_wait=5.0,
+                    max_sec_random_wait=5.0,
+                )
                 # Print saved path
                 print("\nROI updating reports saved in: \n", report_dir)
 
@@ -1777,7 +1840,16 @@ class SpecExp:
         # Save err report
         if len(fail_err_list) > 0:
             df_err = pd.DataFrame(fail_err_list, columns=["Item", "Path", "Error_line", "Error_message"])
-            df_err.to_csv(unc_path(report_dir + "_failed_ROI_loading_" + cts + ".csv"), index=False)
+            # TODO: df_err.to_csv(unc_path(report_dir + "_failed_ROI_loading_" + cts + ".csv"), index=False)
+            df_to_csv(
+                dataframe=df_err,
+                csv_path=unc_path(report_dir + "_failed_ROI_loading_" + cts + ".csv"),
+                index=False,
+                space_wait_timeout=self._space_wait_timeout,
+                reserve_free_pct=self._reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
             # Print err
             print("\nLoading from following ROI files failed:\n", fail_list)
 
@@ -2205,6 +2277,8 @@ class SpecExp:
         print_update: bool = True,
         *,
         _roi_id: Optional[str] = None,  # Specify ROI ID
+        _skip_meta_validation: bool = False,
+        _use_external_update: bool = False,
     ) -> None:
         """
         Add a (multi-)polygon ROI to a raster image using vertex coordinates.
@@ -2264,24 +2338,25 @@ class SpecExp:
 
         group_name: str = group
 
-        # Validate groups
-        if group_name not in self._groups:
-            raise ValueError(f"\nGroup '{group_name}' is not found")
+        if not _skip_meta_validation:
+            # Validate groups
+            if group_name not in self._groups:
+                raise ValueError(f"\nGroup '{group_name}' is not found")
 
-        # Validate image_name
-        image_name_list = [imgt[2] for imgt in self._images]
-        if image_name not in image_name_list:
-            raise ValueError(f"raster image name '{image_name}' is not found")
+            # Validate image_name
+            image_name_list = [imgt[2] for imgt in self._images]
+            if image_name not in image_name_list:
+                raise ValueError(f"raster image name '{image_name}' is not found")
 
-        # Validate image existence in the specified group
-        existed_images = [imgt for imgt in self.images if (imgt[2] == image_name and imgt[1] == group_name)]
-        if len(existed_images) < 1:
-            raise ValueError(f"No image with name '{image_name}' added in given group '{group_name}'.")
-        if len(existed_images) > 1:
-            raise ValueError(
-                f"Duplicated image with name '{image_name}' found in given group '{group_name}': \
-                             {existed_images}. Image name must be unique in a group."
-            )
+            # Validate image existence in the specified group
+            existed_images = [imgt for imgt in self.images if (imgt[2] == image_name and imgt[1] == group_name)]
+            if len(existed_images) < 1:
+                raise ValueError(f"No image with name '{image_name}' added in given group '{group_name}'.")
+            if len(existed_images) > 1:
+                raise ValueError(
+                    f"Duplicated image with name '{image_name}' found in given group '{group_name}': \
+                                 {existed_images}. Image name must be unique in a group."
+                )
 
         # ROI type
         if as_mask:
@@ -2290,18 +2365,24 @@ class SpecExp:
             roi_type = "sample"
 
         # Validate ROI coordinate integrity
-        vertex_coordinate_pair_lists1 = []
-        for coordlist in coord_lists:
-            # Validate integrity of vertex coordinate list of every polygon
-            if len(coordlist) < 4:
-                raise ValueError("number of vertex coordinate pairs should be at least 4 for a polygon")
-            # Convert coordinate numeric types to float
-            coordlist1 = [(float(coordpair[0]), float(coordpair[1])) for coordpair in coordlist]
-            # Force side vector integrity - last coordinates return to start to form a closed shape
-            if coordlist1[-1] != coordlist1[0]:
-                coordlist1.append(coordlist1[0])
-            # Get coordinate list for update
-            vertex_coordinate_pair_lists1.append(coordlist1)
+        vertex_coordinate_pair_lists1: list
+        if not _skip_meta_validation:
+            _float = float
+            vertex_coordinate_pair_lists1 = []
+            _append = vertex_coordinate_pair_lists1.append
+            for coordlist in coord_lists:
+                # Validate integrity of vertex coordinate list of every polygon
+                if len(coordlist) < 4:
+                    raise ValueError("number of vertex coordinate pairs should be at least 4 for a polygon")
+                # TODO: Convert coordinate numeric types to float
+                coordlist1 = [(_float(pair[0]), _float(pair[1])) for pair in coordlist]
+                # Force side vector integrity - last coordinates return to start to form a closed shape
+                if coordlist1[-1] != coordlist1[0]:
+                    coordlist1.append(coordlist1[0])
+                # Get coordinate list for update
+                _append(coordlist1)
+        else:
+            vertex_coordinate_pair_lists1 = coord_lists
 
         # Construct ROI item
         if _roi_id is None:
@@ -2318,23 +2399,35 @@ class SpecExp:
             roi_type,
             vertex_coordinate_pair_lists1,
         )
-        existed_roi_ids = [roit[0] for roit in self._rois_from_coords]
-        if roi_id not in existed_roi_ids:
+        # TODO: changed
+        # existed_roi_ids = [roit[0] for roit in self._rois_from_coords]
+        # if roi_id not in existed_roi_ids:
+        #     self._rois_from_coords.append(new_roic_item)
+        # else:
+        #     for i in range(len(self._rois_from_coords)):
+        #         if self._rois_from_coords[i][0] == roi_id:
+        #             self._rois_from_coords[i] = new_roic_item
+        if self.__roi_id_to_index is None:
+            self.__roi_id_to_index = {roit[0]: i for i, roit in enumerate(self._rois_from_coords)}
+        if roi_id not in self.__roi_id_to_index:
+            # Add new
+            self.__roi_id_to_index[roi_id] = len(self._rois_from_coords)
             self._rois_from_coords.append(new_roic_item)
         else:
-            for i in range(len(self._rois_from_coords)):
-                if self._rois_from_coords[i][0] == roi_id:
-                    self._rois_from_coords[i] = new_roic_item
+            # Update old
+            idx = self.__roi_id_to_index[roi_id]
+            self._rois_from_coords[idx] = new_roic_item
 
         # Print report
         if print_update:
             print("\nFollowing ROI item added or updated:\n")
             self._df_roic([new_roic_item])
 
-        # Update ROIs
-        self._update_roi()
-        # Update sample labels & targets
-        self._update_sample_labels_targets()
+        if not _use_external_update:
+            # Update ROIs
+            self._update_roi()
+            # Update sample labels & targets
+            self._update_sample_labels_targets()
 
     # self._rois updater
     # Format of associated attribute:
@@ -3421,11 +3514,12 @@ class SpecExp:
     # rois_sample: [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs]
     # sample_targets: [0 fixed sample id, 1 user assinged labels, 2 target values, 3 sample belonging group, 4 validation group, 5 test mask, 6 train mask]  # noqa: E501
     @simple_type_validator
-    def roi_subset_augmentation(
+    def roi_subset_augmentation(  # noqa: C901
         self,
         n_sub: int,
         resolution: Union[int, float],
         coverage_ratio: float,
+        n_processor: int = -1,
         random_state: Optional[int] = None,
     ) -> None:
         """
@@ -3440,15 +3534,33 @@ class SpecExp:
         ----------
         n_sub : int
             The number of augmented synthetic data points (subsets) to generate for each sample ROI.
+
         resolution : int or float
             The side length of the square grid cells used for sampling.
             This effectively defines the spatial grain of the augmentation.
+
+            Note: Combining a large ROI with a very fine resolution (small value) significantly increases the number of grid cells to be processed, leading to longer computation times.
+            It is recommended to scale the resolution proportionally to the ROI size and the desired 'n_sub' to maintain an efficient balance between spatial variability and performance.
+
         coverage_ratio : float
             The target fraction of the total original ROI area to retain in each augmented sample.
             Must be a value between 0.0 and 1.0.
+
+        n_processor : int, optional
+            Number of processors to use during pipeline execution.
+
+            Default is -1, which does not apply parallel execution on Windows and applies parallel execution using (maximum available CPUs - 1) processors on other operating systems.
+
+            Set to -2 to force (maximum available CPUs - 1) processors on Windows.
+
+            Windows note: when using ``n_processor > 1`` or ``n_processor = -2`` on Windows, all excecutable code in the working script must be placed within::
+
+                if __name__ == '__main__':
+
         random_state : int, optional
             Seed for the internal NumPy random number generator to ensure reproducibility.
             Default is None.
+
 
         Examples
         --------
@@ -3459,6 +3571,23 @@ class SpecExp:
         ...     random_state=42
         ... )
         """  # noqa: E501
+
+        # Validate processor
+        if n_processor < 0:
+            if os.name == "nt" and n_processor != -2:
+                n_processor = 1
+            else:
+                n_processor = max(1, cpu_count() - 1)
+
+        # Prompt "if __name__ == '__main__':" protection for windows multiprocessing
+        if n_processor > 1:
+            if os.name == "nt":
+                warnings.warn(
+                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__': \n\n\
+                    Please make sure all of your main codes in the script are placed within this block.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
         # Validate random state
         if random_state is None:
@@ -3478,56 +3607,86 @@ class SpecExp:
             ) from e
 
         # Loop existed ROIs
-        print("\n\nApply ROI stohastic spatial subset augmentation...")
-        for roit in tqdm(self.rois_sample, total=len(self.rois_sample)):
-            # Look for target item
-            target_it = [tit for tit in self.sample_targets if tit[0] == roit[0]][0]
-            # Copy old targets
-            targets_old = deepcopy(self.sample_targets)
-            # Generate subset coordinates
-            coords = roit[-1]
-            subcoords_list = [
-                resample_roi(
-                    coord_lists=coords,
-                    resolution=resolution,
-                    coverage_ratio=coverage_ratio,
-                    random_state=random_state + k,
-                )
-                for k in range(n_sub)
-            ]
-            # Add new ROIs
-            for k, subcoords in enumerate(subcoords_list):
-                self.add_roi_by_coords(
-                    roi_name=f"{roit[3]}_&#aug{k}",
-                    coord_lists=subcoords,
-                    image_name=roit[2],
-                    group=roit[1],
-                    as_mask=False,
-                    print_update=False,
-                    _roi_id=f"{roit[0]}_&#aug{k}",
-                )
-            # Generate additional sample targets
-            target_sub_list = [
-                (
-                    f"{roit[0]}_&#aug{k}",
-                    f"{target_it[1]}_&#aug{k}",
-                    target_it[2],
-                    target_it[3],
-                    target_it[4],
-                    np.int8(0),
-                    np.int8(1),
-                )
-                for k in range(len(subcoords_list))
-            ]
-            # Validate IDs
-            existed_ids = [tit[0] for tit in self.sample_targets]
-            for tsub in target_sub_list:
-                if tsub[0] not in existed_ids:
-                    raise ValueError(
-                        f"Sample ID mismatch, expected ID from target: '{tsub[0]}'\n\navailable IDs: {existed_ids}"
+        print("\nApply ROI stohastic spatial subset augmentation...")
+        # Copy old labels and targets
+        labels_old = deepcopy(self.sample_labels)
+        targets_old = deepcopy(self.sample_targets)
+        targets_dict = {tit[0]: tit for tit in targets_old}
+        sub_rois: list[tuple[dict[str, Any], tuple, tuple]]
+        if n_processor == 1:
+            sub_rois = []
+            for roit in tqdm(self.rois_sample, total=len(self.rois_sample)):
+                sub_rois.extend(
+                    _roi_subset_augmentation_core(
+                        rois_sample_item=roit,
+                        targets_dict=targets_dict,
+                        n_sub=n_sub,
+                        resolution=resolution,
+                        coverage_ratio=coverage_ratio,
+                        random_state=random_state,
                     )
-            # Update sample targets
-            self.sample_targets = targets_old + target_sub_list
+                )
+        else:
+            # Validate number of processors to use
+            ncpu_max = max(cpu_count() - 1, 1)
+            ncpu = min(n_processor, ncpu_max)
+            # Bind constant arguments for _preprocessing_sample - Result dumped in _preprocessing_sample
+            _roi_subset_augmentation_core_it = partial(
+                _roi_subset_augmentation_core,
+                targets_dict=targets_dict,
+                n_sub=n_sub,
+                resolution=resolution,
+                coverage_ratio=coverage_ratio,
+                random_state=random_state,
+            )
+            # Processing - multiprocessing for loop
+            with ProcessingPool(nodes=ncpu) as pool:
+                sub_rois_nested = list(
+                    tqdm(
+                        pool.imap(
+                            _roi_subset_augmentation_core_it,
+                            self.rois_sample,
+                        ),
+                        total=len(self.rois_sample),
+                    )
+                )
+                sub_rois = []
+                for sroi_list in sub_rois_nested:
+                    sub_rois.extend(sroi_list)
+
+        # Add ROIs
+        self.__roi_id_to_index = None
+        for sroi in sub_rois:
+            self.add_roi_by_coords(
+                roi_name=sroi[0]["roi_name"],
+                coord_lists=sroi[0]["coord_lists"],
+                image_name=sroi[0]["image_name"],
+                group=sroi[0]["group"],
+                as_mask=sroi[0]["as_mask"],
+                print_update=sroi[0]["print_update"],
+                _roi_id=sroi[0]["_roi_id"],
+                _skip_meta_validation=True,
+                _use_external_update=True,
+            )
+        self.__roi_id_to_index = None
+
+        # Update ROIs
+        self._update_roi()
+        # Update sample labels & targets
+        self._update_sample_labels_targets()
+
+        # Validate IDs
+        existed_ids = [tit[0] for tit in self.sample_targets]
+        for sroi in sub_rois:
+            if sroi[2][0] not in existed_ids:
+                raise ValueError(
+                    f"Sample ID mismatch, expected ID from target: '{sroi[2][0]}'\n\n Available IDs: {existed_ids}"
+                    + "Please recreate the SpecExp instance and report this internal error."
+                )
+
+        # Update sample targets
+        self.sample_labels = labels_old + [sroi[1] for sroi in sub_rois]
+        self.sample_targets = targets_old + [sroi[2] for sroi in sub_rois]
 
     ## Standalone 1D spectrum samples
     @overload
@@ -3804,14 +3963,33 @@ class SpecExp:
 
         # Write to csv
         # Write current
-        df_sspecs_out.to_csv(unc_path(wpath + f"Standalone_spectra_{self._create_time}.csv"), index=False)
+        # TODO: df_sspecs_out.to_csv(unc_path(wpath + f"Standalone_spectra_{self._create_time}.csv"), index=False)
+        df_to_csv(
+            dataframe=df_sspecs_out,
+            csv_path=unc_path(wpath + f"Standalone_spectra_{self._create_time}.csv"),
+            index=False,
+            space_wait_timeout=self._space_wait_timeout,
+            reserve_free_pct=self._reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
 
         # Write backup
         # Current time for saving backups
         cts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         if save_backup:
-            df_sspecs_out.to_csv(
-                unc_path(wpath + f"Standalone_spectra_{self._create_time}_backup_{cts}.csv"), index=False
+            # TODO: changed
+            # df_sspecs_out.to_csv(
+            #     unc_path(wpath + f"Standalone_spectra_{self._create_time}_backup_{cts}.csv"), index=False
+            # )
+            df_to_csv(
+                dataframe=df_sspecs_out,
+                csv_path=unc_path(wpath + f"Standalone_spectra_{self._create_time}_backup_{cts}.csv"),
+                index=False,
+                space_wait_timeout=self._space_wait_timeout,
+                reserve_free_pct=self._reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
         # Print update reports
@@ -3869,7 +4047,8 @@ class SpecExp:
 
         # Validate structure
         try:
-            df_sspecs = pd.read_csv(unc_path(dpath))
+            # TODO: df_sspecs = pd.read_csv(unc_path(dpath))
+            df_sspecs = df_from_csv(csv_path=unc_path(dpath))
         except Exception as e:
             raise ValueError("\nUnable to read the provided file: \ndpath\n\n", e) from e
         coln_d = [("Band_" + str(i + 1)) for i in range(len(df_sspecs.columns) - 4)]
@@ -4331,7 +4510,16 @@ class SpecExp:
         df_lb = df_lb.astype("object")
 
         # Save to file
-        df_lb.to_csv(unc_path(save_path), index=False)
+        # TODO: df_lb.to_csv(unc_path(save_path), index=False)
+        df_to_csv(
+            dataframe=df_lb,
+            csv_path=unc_path(save_path),
+            index=False,
+            space_wait_timeout=self._space_wait_timeout,
+            reserve_free_pct=self._reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
 
     # Alias
     labels_to_csv = sample_labels_to_csv
@@ -4490,7 +4678,8 @@ class SpecExp:
             raise ValueError(f"File format is not '.csv': {read_path}")
 
         # Load dataframe - table format validated in self.sample_labels_from_df
-        df_label = pd.read_csv(unc_path(read_path))
+        # TODO: df_label = pd.read_csv(unc_path(read_path))
+        df_label = df_from_csv(csv_path=unc_path(read_path))
         df_label = df_label.astype("object")
 
         # Update labels - formatting with property formatting function
@@ -4564,9 +4753,28 @@ class SpecExp:
 
         # Write to csv
         if include_header:
-            dft.to_csv(unc_path(path), index=False)
+            # dft.to_csv(unc_path(path), index=False)
+            df_to_csv(
+                dataframe=dft,
+                csv_path=unc_path(path),
+                index=False,
+                space_wait_timeout=self._space_wait_timeout,
+                reserve_free_pct=self._reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
         else:
-            dft.to_csv(unc_path(path), index=False, header=False)
+            # dft.to_csv(unc_path(path), index=False, header=False)
+            df_to_csv(
+                dataframe=dft,
+                csv_path=unc_path(path),
+                index=False,
+                header=False,
+                space_wait_timeout=self._space_wait_timeout,
+                reserve_free_pct=self._reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
     # Alias
     targets_to_csv = sample_targets_to_csv
@@ -4765,9 +4973,11 @@ class SpecExp:
 
         # Read df
         if include_header:
-            dft = pd.read_csv(unc_path(path), dtype=dtp)
+            # TODO: dft = pd.read_csv(unc_path(path), dtype=dtp)
+            dft = df_from_csv(csv_path=unc_path(path), dtype=dtp)
         else:
-            dft = pd.read_csv(unc_path(path), dtype=dtp, header=None)
+            # TODO: dft = pd.read_csv(unc_path(path), dtype=dtp, header=None)
+            dft = df_from_csv(csv_path=unc_path(path), dtype=dtp, header=None)
         dft.fillna("-", inplace=True)
         str_cols = list(dft.columns[:2]) + list(dft.columns[3:])
         dft[str_cols] = dft[str_cols].astype("object")
@@ -4823,7 +5033,13 @@ class SpecExp:
     # Auto-save with copy before each run of testing
     # Save data configurations to file
     @simple_type_validator
-    def save_data_config(self, copy: bool = True) -> None:
+    def save_data_config(
+        self,
+        copy: bool = True,
+        *,
+        _space_wait_timeout: int = 1,
+        _reserve_free_pct: float = 0.1,
+    ) -> None:
         """
         Save the current configuration of this SpecExp instance to a file in the root of the report directory.
 
@@ -4866,8 +5082,18 @@ class SpecExp:
 
         # Dump data
         dump_path0 = dump_dir + f"SpecExp_data_configuration_{self.create_time}.dill"
-        with open(unc_path(dump_path0), 'wb') as f:
-            dill.dump(self, f)
+        # TODO: changed
+        # with open(unc_path(dump_path0), 'wb') as f:
+        #     dill.dump(self, f)
+        dump_dill(
+            self,
+            target_file_path=unc_path(dump_path0),
+            backup=False,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
 
         # Dump copy
         if copy:
@@ -4885,8 +5111,18 @@ class SpecExp:
                             copy file creation rate limited to 100 per second."
                     )
             # Dump
-            with open(unc_path(dump_path1), 'wb') as f:
-                dill.dump(self, f)
+            # TODO: changed
+            # with open(unc_path(dump_path1), 'wb') as f:
+            #     dill.dump(self, f)
+            dump_dill(
+                self,
+                target_file_path=unc_path(dump_path1),
+                backup=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
             # Print output path
             print("\nSpecExp configurations saved to: \n", dump_path0)
@@ -4943,8 +5179,8 @@ class SpecExp:
             dump_path0 = config_file_path
 
         # Load to instance
-        with open(unc_path(dump_path0), 'rb') as f:
-            loaded_instance = dill.load(f)
+        # TODO: new
+        loaded_instance = load_dill(unc_path(dump_path0))
         # self.__dict__.update(loaded_instance.__dict__)
         for key, value in loaded_instance.__dict__.items():
             object.__setattr__(self, key, value)

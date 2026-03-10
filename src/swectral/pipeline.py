@@ -36,8 +36,8 @@ import pandas as pd
 import torch
 
 # Raster
-import rasterio
-from rasterio.windows import Window
+# import rasterio
+# from rasterio.windows import Window
 from rasterio.errors import NotGeoreferencedWarning
 
 # Visualization
@@ -56,18 +56,21 @@ from .groupstats import (
     performance_marginal_stats,
 )
 from .modeleva import ModelEva
-from .rasterop import croproi, pixel_apply
+from .rasterop import croproi
+
+# from .rasterop import pixel_apply
 from .resultcli import group_stats_report, core_chain_report
 from .roistats import roispec, minbbox
 from .specexp import SpecExp, _spec_exp_validator
 from .specio import (
-    arraylike_validator,
+    # arraylike_validator,
     dataframe_validator,
-    dump_vars,
-    load_vars,
+    dump_dill,
+    load_dill,
     RealNumber,
     simple_type_validator,
     unc_path,
+    df_to_csv,
 )
 from .pipeline_validator import (
     _target_type_validation_for_serialization,
@@ -143,6 +146,18 @@ class SpecPipe:
     ----------
     spec_exp : SpecExp
         Instance of SpecExp configuring spectral experiment datasets. See ``SpecExp`` for details.
+
+    report_directory : str
+        Root directory where reports are stored.
+        This value is automatically derived from the ``report_directory`` attribute of the provided ``spec_exp`` instance.
+
+    space_wait_timeout : int
+        Number of seconds to wait for disk space to become available before raising an error when the disk is full.
+        Default is 36000 (10 hours).
+
+    reserve_free_pct : float
+        Minimum percentage of free disk space required to proceed with processing.
+        Default is 5.0 (5% of total storage capacity).
 
     process : list of tuple
         Added process items.
@@ -255,7 +270,12 @@ class SpecPipe:
     """  # noqa: E501
 
     @simple_type_validator
-    def __init__(self, spec_exp: SpecExp) -> None:  # noqa: C901
+    def __init__(
+        self,
+        spec_exp: SpecExp,
+        space_wait_timeout: int = 36000,
+        reserve_free_pct: float = 5.0,
+    ) -> None:  # noqa: C901
 
         # Validate SpecExp integrity
         _spec_exp_validator(spec_exp)
@@ -280,6 +300,12 @@ class SpecPipe:
         # SpecExp._images: [0 id, 1 group, 2 image_name, 3 image_use_type, 4 image_path]
         # SpecExp._rois: [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs]
         self._spec_exp: SpecExp = spec_exp
+
+        # TODO: File output parameters
+        self._spec_exp._space_wait_timeout = max(0, space_wait_timeout)
+        self._spec_exp._reserve_free_pct = max(0.01, reserve_free_pct)
+        self._space_wait_timeout: int = max(0, space_wait_timeout)
+        self._reserve_free_pct: float = max(0.01, reserve_free_pct)
 
         # Sample target values
         # [0 fixed sample id, 1 user assinged labels, 2 Target values]
@@ -328,10 +354,45 @@ class SpecPipe:
 
     ## Mutable properties
     @property
+    def space_wait_timeout(self) -> int:
+        return self._space_wait_timeout
+
+    @space_wait_timeout.setter
+    @simple_type_validator
+    def space_wait_timeout(self, value: int) -> None:
+        if len(self.process) > 0:
+            if len([proc for proc in self.process if proc[3] == "model"]) > 0:
+                warnings.warn(
+                    "Found model evaluation process. "
+                    + "Remove and re-add the models to make the change effective for model evaluation processes.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        self._space_wait_timeout = max(0, value)
+
+    @property
+    def reserve_free_pct(self) -> float:
+        return self._reserve_free_pct
+
+    @reserve_free_pct.setter
+    @simple_type_validator
+    def reserve_free_pct(self, value: float) -> None:
+        if len(self.process) > 0:
+            if len([proc for proc in self.process if proc[3] == "model"]) > 0:
+                warnings.warn(
+                    "Found model evaluation process. "
+                    + "Remove and re-add the models to make the change effective for model evaluation processes.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        self._reserve_free_pct = max(0.01, value)
+
+    @property
     def report_directory(self) -> str:
         return self._report_directory
 
     @report_directory.setter
+    @simple_type_validator
     def report_directory(self, value: str) -> None:
         if os.path.exists(unc_path(value)):
             warning_msg = (
@@ -509,6 +570,11 @@ class SpecPipe:
             raise ValueError("Given SpecExp instance is invalid") from e
         try:
             self._spec_exp = spec_exp
+            # Set SpecExp saving parameters
+            # TODO: new
+            self._spec_exp._space_wait_timeout = self._space_wait_timeout
+            self._spec_exp._reserve_free_pct = self._reserve_free_pct
+            # Update SpecExp-related SpecPipe data
             self.__sample_targets = spec_exp.sample_targets
             self.__is_target_numeric = self._check_target_numeric(spec_exp)
             self._report_directory = spec_exp._report_directory
@@ -588,7 +654,13 @@ class SpecPipe:
             test_img_path = sdir + "test_images." + img_path.split(".")[-1]
             with open(unc_path(sdir + "pre_execution_data.json"), "w") as f:
                 # Save test image
-                croproi(raster_path=img_path, roi_coordinates=bdmin, output_path=test_img_path)
+                croproi(
+                    raster_path=img_path,
+                    roi_coordinates=bdmin,
+                    output_path=test_img_path,
+                    _space_wait_timeout=self.space_wait_timeout,
+                    _reserve_free_pct=self.reserve_free_pct,
+                )
                 # Convert np.float32 to native float for json dump
                 # Save test spectra
                 td1 = {
@@ -603,7 +675,16 @@ class SpecPipe:
 
             # Testing spectrum table
             td2 = pd.DataFrame(roitable, columns=[("Band_" + str(i + 1)) for i in range(roitable.shape[1])])
-            td2.to_csv(unc_path(sdir + "Pre_execution_data_roi_specs.csv"), index=False)
+            # TODO: td2.to_csv(unc_path(sdir + "Pre_execution_data_roi_specs.csv"), index=False)
+            df_to_csv(
+                dataframe=td2,
+                csv_path=unc_path(sdir + "Pre_execution_data_roi_specs.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
             # Output for pre-execution validation data
             test_data_pre = {
@@ -641,7 +722,16 @@ class SpecPipe:
 
             # Testing spectrum table
             td2 = pd.DataFrame([list(spec1d)], columns=[("Band_" + str(i + 1)) for i in range(len(spec1d))])
-            td2.to_csv(unc_path(sdir + "Pre_execution_data_standalone_specs.csv"), index=False)
+            # TODO: td2.to_csv(unc_path(sdir + "Pre_execution_data_standalone_specs.csv"), index=False)
+            df_to_csv(
+                dataframe=td2,
+                csv_path=unc_path(sdir + "Pre_execution_data_standalone_specs.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
             # Output for pre-execution validation data
             test_data_pre = {
@@ -659,277 +749,6 @@ class SpecPipe:
                 "spec1d": spec1d,
             }
             self.__pretest_data = test_data_pre
-
-    # Process function validator - pretest validator
-    # Data levels:
-    # 0 - image (path), \
-    # 1 - pixel_spec (1D), 2 - pixel_specs_array (2D), 3 - pixel_specs_tensor (3D), 4 - pixel_hyperspecs_tensor (3D), \
-    # 5 - image_ROI (img_path + ROI coords), 6 - ROI_specs (2D), 7 - spec1d (1D spec stats)
-    # Pretest_data: [ID, label, target, validation_group, img_path, test_img_path, roi_coords, test_roi_coords, roitable, spec1d]  # noqa: E501
-    @simple_type_validator
-    def _process_validator(  # noqa: C901
-        self,
-        method: Callable,
-        input_data_level: Union[str, int],
-        output_data_level: Union[str, int],
-    ) -> Callable:
-        """
-        Validate process method of specified input data level before execution of entire processing chain.
-        """
-        # Pretest_data validation for static typing
-        if self.__pretest_data is None:
-            raise ValueError(
-                "Internal Error: 'SpecPipe._pretest_data' is None. \
-                    Pre-execution test data initialization fails. Please report."
-            )
-
-        # Applied only for image samples
-        if len(self.spec_exp.standalone_specs_sample) == 0:
-            # Validate data_level
-            dl_in = _dl_val(input_data_level)[0]
-            dl_out = _dl_val(output_data_level)[0]
-
-            # Test image path
-            test_img_path = self.__pretest_data["test_img_path"]
-
-            # Test data
-            # TODO:if dl_out < 8:
-            if dl_out <= 7:
-                if dl_in == 0:
-                    # Output dst image path
-                    img_path = os.path.splitext(str(test_img_path).replace("\\", "/").replace("//", "/"))
-                    img_name = img_path[0].split("/")[-1]
-                    output_path = (
-                        self.report_directory
-                        + "/Pre_execution_test_data/"
-                        + img_name
-                        + "_processed_by_"
-                        + method.__name__
-                        + img_path[1]
-                    )
-                    # Process image and return path of processed image
-                    result = method(test_img_path, output_path)
-                elif dl_in == 1:
-                    # Output dst image path
-                    img_path = os.path.splitext(str(test_img_path).replace("\\", "/").replace("//", "/"))
-                    img_name = img_path[0].split("/")[-1]
-                    output_path = (
-                        self.report_directory
-                        + "/Pre_execution_test_data/"
-                        + img_name
-                        + "_px_app_"
-                        + method.__name__
-                        + img_path[1]
-                    )
-                    # Process image and return path of processed image
-                    result = pixel_apply(test_img_path, method, "spec", output_path, progress=False)
-                elif dl_in == 2:
-                    # Output dst image path
-                    img_path = os.path.splitext(str(test_img_path).replace("\\", "/").replace("//", "/"))
-                    img_name = img_path[0].split("/")[-1]
-                    output_path = (
-                        self.report_directory
-                        + "/Pre_execution_test_data/"
-                        + img_name
-                        + "_px_app_"
-                        + method.__name__
-                        + img_path[1]
-                    )
-                    # Process image and return path of processed image
-                    result = pixel_apply(test_img_path, method, "array", output_path, progress=False)
-                elif dl_in == 3:
-                    # Output dst image path
-                    img_path = os.path.splitext(str(test_img_path).replace("\\", "/").replace("//", "/"))
-                    img_name = img_path[0].split("/")[-1]
-                    output_path = (
-                        self.report_directory
-                        + "/Pre_execution_test_data/"
-                        + img_name
-                        + "_px_app_"
-                        + method.__name__
-                        + img_path[1]
-                    )
-                    # Process image and return path of processed image
-                    result = pixel_apply(test_img_path, method, "tensor", output_path, progress=False)
-                elif dl_in == 4:
-                    # Output dst image path
-                    img_path = os.path.splitext(str(test_img_path).replace("\\", "/").replace("//", "/"))
-                    img_name = img_path[0].split("/")[-1]
-                    output_path = (
-                        self.report_directory
-                        + "/Pre_execution_test_data/"
-                        + img_name
-                        + "_px_app_"
-                        + method.__name__
-                        + img_path[1]
-                    )
-                    # Process image and return path of processed image
-                    result = pixel_apply(test_img_path, method, "tensor_hyper", output_path, progress=False)
-                elif dl_in == 5:
-                    result = method(test_img_path, self.__pretest_data["roi_coords"])
-                elif dl_in == 6:
-                    testing_data = self.__pretest_data["roi_specs"]
-                    result = method(testing_data)
-                elif dl_in == 7:
-                    testing_data = self.__pretest_data["spec1d"]
-                    result = method(testing_data)
-                else:
-                    # TODO: change err msg
-                    raise ValueError("Input data level cannot be 'model' or 9 (corresponding index).")
-            else:
-                # Model method is not validated here
-                return method
-
-            # Output validation
-            if result is None:
-                raise ValueError(
-                    f"Method '{method.__name__}' returns no data. \
-                        The added method must have a return. \
-                            For image processing methods, absolute path of resulting image must be returned."
-                )
-
-            # For raster image path and image file output
-            if dl_out <= 4:
-                # Raster file validation
-                if os.path.exists(unc_path(result)):
-                    # Open raster validation
-                    try:
-                        with rasterio.open(result) as src:
-                            # Raster validation
-                            if src is None:
-                                raise ValueError("Invalid raster: raster is None.")
-                            elif (src.width == 0) or (src.height == 0) or (src.count == 0):
-                                raise ValueError(
-                                    f"Invalid raster, \
-                                        got dimensions: {src.width} x {src.height}, got number of bands: {src.count}."
-                                )
-                            else:
-                                # Raster value validation
-                                all_no_data = True
-                                sample = src.read(min(int(src.count / 2), 1))
-                                if np.all(sample == src.nodata) or np.all(np.isnan(sample)):
-                                    sample = src.read(
-                                        window=(
-                                            (
-                                                max(int(src.height / 2) - 1, 0),
-                                                min(int(src.height / 2) + 1, src.height),
-                                            ),
-                                            (
-                                                max(int(src.width / 2) - 1, 0),
-                                                min(int(src.width / 2) + 1, src.width),
-                                            ),
-                                        )
-                                    )
-                                    if np.all(sample == src.nodata) or np.all(np.isnan(sample)):
-                                        for i in range(0, src.height, 32):
-                                            for j in range(0, src.width, 32):
-                                                # Define window for current tile
-                                                win = Window(
-                                                    col_off=j,
-                                                    row_off=i,
-                                                    width=min(32, src.width - j),
-                                                    height=min(32, src.height - i),
-                                                )
-                                                # Read all bands for current tile (shape: [bands, rows, cols])
-                                                sample = src.read(window=win)
-                                                if not (np.all(sample == src.nodata) or np.all(np.isnan(sample))):
-                                                    all_no_data = False
-                                                    break
-                                    else:
-                                        all_no_data = False
-                                else:
-                                    all_no_data = False
-                                if all_no_data:
-                                    raise ValueError("All raster values are NoData")
-                    except Exception as e:
-                        raise ValueError(
-                            f"Failed to open resulting raster image of {method.__name__}.\
-                                \nGot path:\n{result}"
-                        ) from e
-                else:
-                    raise ValueError(f"Resulting file path is invalid: {result}")
-
-            # For array-like output
-            if (dl_out >= 6) & (dl_out <= 7):
-                result = arraylike_validator()(result)
-                if type(result) is np.ndarray:
-                    if np.issubdtype(result.dtype, np.number):
-                        if (dl_out == 6) and (result.ndim != 2):
-                            raise ValueError(
-                                f"Method with output data level '{dl_out}' or '{_dl_val(dl_out)[1]}' \
-                                    must return an 2D array, got array dimension: {result.ndim}"
-                            )
-                        else:
-                            result = np.array(result)
-                            if (dl_out == 7) and (result.ndim != 1):
-                                raise ValueError(
-                                    f"Method with output data level '{dl_out}' or '{_dl_val(dl_out)[1]}' \
-                                        must return an 1D array-like, got array dimension: {result.ndim}"
-                                )
-                    else:
-                        raise ValueError(
-                            f"Method with output data level '{dl_out}' or '{_dl_val(dl_out)[1]}' \
-                                must return an array of numbers, got array dtype: {result.dtype}"
-                        )
-                else:
-                    raise TypeError(
-                        f"Method with output data level '{dl_out}' or '{_dl_val(dl_out)[1]}' \
-                            must return an NumPy array-like, got: {type(result)}"
-                    )
-
-            return method
-
-        else:
-            # Validate data_level
-            dl_in = _dl_val(input_data_level)[0]
-            dl_out = _dl_val(output_data_level)[0]
-            if dl_in != 7:
-                raise ValueError(
-                    f"Method for one-dimensional standalone spectra must have input data level of 7 ('spec1d'), \
-                        but got: {input_data_level}"
-                )
-            if dl_out < 7:
-                raise ValueError(
-                    f"Method for one-dimensional standalone spectra cannot have output data level below 7 ('spec1d'), \
-                        but got level number: {dl_out}"
-                )
-            # TODO: if dl_out == 8:
-            if dl_out > 7:
-                # Model method is not validated here
-                return method
-
-            testing_data = self.__pretest_data["spec1d"]
-            result = method(testing_data)
-
-            # Output validation
-            if result is None:
-                raise ValueError(
-                    f"Method '{method.__name__}' returns no data. The added method must have a return. \
-                        For image processing methods, absolute path of resulting image must be returned."
-                )
-
-            # For array-like output
-            result = arraylike_validator()(result)
-            if type(result) is np.ndarray:
-                if np.issubdtype(result.dtype, np.number):
-                    result = np.array(result)
-                    if (dl_out == 7) and (result.ndim != 1):
-                        raise ValueError(
-                            f"Method with output data level '{dl_out}' or '{_dl_val(dl_out)[1]}' \
-                                must return an 1D array-like, got array dimension: {result.ndim}"
-                        )
-                else:
-                    raise ValueError(
-                        f"Method with output data level '{dl_out}' or '{_dl_val(dl_out)[1]}' \
-                            must return an array of numbers, got array dtype: {result.dtype}"
-                    )
-            else:
-                raise TypeError(
-                    f"Method with output data level '{dl_out}' or '{_dl_val(dl_out)[1]}' \
-                        must return an NumPy array-like, got: {type(result)}"
-                )
-
-            return method
 
     # Add model - from add_process =====================================================================================
     @simple_type_validator
@@ -3086,15 +2905,70 @@ class SpecPipe:
         df_exec_chains, df_exec_chains_label = self.ls_chains(print_label=False, return_label=True)
 
         # Save configs
-        df_process.to_csv(unc_path(report_dir + "SpecPipe_added_process.csv"), index=False)
-        df_full_chains.to_csv(unc_path(report_dir + "SpecPipe_full_factorial_chains_in_ID.csv"), index=False)
-        df_full_chains_label.to_csv(unc_path(report_dir + "SpecPipe_full_factorial_chains_in_label.csv"), index=False)
-        df_exec_chains.to_csv(unc_path(report_dir + "SpecPipe_exec_chains_in_ID.csv"), index=False)
-        df_exec_chains_label.to_csv(unc_path(report_dir + "SpecPipe_exec_chains_in_label.csv"), index=False)
+        # TODO: changed
+        # df_process.to_csv(unc_path(report_dir + "SpecPipe_added_process.csv"), index=False)
+        # df_full_chains.to_csv(unc_path(report_dir + "SpecPipe_full_factorial_chains_in_ID.csv"), index=False)
+        # df_full_chains_label.to_csv(unc_path(report_dir + "SpecPipe_full_factorial_chains_in_label.csv"), index=False)
+        # df_exec_chains.to_csv(unc_path(report_dir + "SpecPipe_exec_chains_in_ID.csv"), index=False)
+        # df_exec_chains_label.to_csv(unc_path(report_dir + "SpecPipe_exec_chains_in_label.csv"), index=False)
+        df_to_csv(
+            dataframe=df_process,
+            csv_path=unc_path(report_dir + "SpecPipe_added_process.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
+        df_to_csv(
+            dataframe=df_full_chains,
+            csv_path=unc_path(report_dir + "SpecPipe_full_factorial_chains_in_ID.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
+        df_to_csv(
+            dataframe=df_full_chains_label,
+            csv_path=unc_path(report_dir + "SpecPipe_full_factorial_chains_in_label.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
+        df_to_csv(
+            dataframe=df_exec_chains,
+            csv_path=unc_path(report_dir + "SpecPipe_exec_chains_in_ID.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
+        df_to_csv(
+            dataframe=df_exec_chains_label,
+            csv_path=unc_path(report_dir + "SpecPipe_exec_chains_in_label.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
 
         # Save SpecPipe
-        with open(unc_path(f"{report_dir}SpecPipe_pipeline_configuration_{self.create_time}.dill"), 'wb') as f:
-            dill.dump(self, f)
+        # TODO: changed
+        config_dill_path = unc_path(f"{report_dir}SpecPipe_pipeline_configuration_{self.create_time}.dill")
+        dump_dill(
+            self,
+            target_file_path=config_dill_path,
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
 
         # Save copies
         if copy:
@@ -3102,21 +2976,81 @@ class SpecPipe:
             time.sleep(1.0)
             # Dump copy
             cts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            df_process.to_csv(unc_path(report_dir + f"SpecPipe_added_process_{cts}.csv"), index=False)
-            df_full_chains.to_csv(unc_path(report_dir + f"SpecPipe_full_factorial_chains_in_ID_{cts}.csv"), index=False)
-            df_full_chains_label.to_csv(
-                unc_path(report_dir + f"SpecPipe_full_factorial_chains_in_label_{cts}.csv"), index=False
+            # TODO: changed
+            # df_process.to_csv(unc_path(report_dir + f"SpecPipe_added_process_{cts}.csv"), index=False)
+            # df_full_chains.to_csv(unc_path(report_dir + f"SpecPipe_full_factorial_chains_in_ID_{cts}.csv"), index=False)  # noqa: E501
+            # df_full_chains_label.to_csv(
+            #     unc_path(report_dir + f"SpecPipe_full_factorial_chains_in_label_{cts}.csv"), index=False
+            # )
+            # df_exec_chains.to_csv(unc_path(report_dir + f"SpecPipe_exec_chains_in_ID_{cts}.csv"), index=False)
+            # df_exec_chains_label.to_csv(unc_path(report_dir + f"SpecPipe_exec_chains_in_label_{cts}.csv"), index=False)  # noqa: E501
+            df_to_csv(
+                dataframe=df_process,
+                csv_path=unc_path(report_dir + f"SpecPipe_added_process_{cts}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
-            df_exec_chains.to_csv(unc_path(report_dir + f"SpecPipe_exec_chains_in_ID_{cts}.csv"), index=False)
-            df_exec_chains_label.to_csv(unc_path(report_dir + f"SpecPipe_exec_chains_in_label_{cts}.csv"), index=False)
-            with open(
-                unc_path(report_dir + f"SpecPipe_pipeline_configuration_{self.create_time}_copy_at_{cts}.dill"), 'wb'
-            ) as f:
-                dill.dump(self, f)
+            df_to_csv(
+                dataframe=df_full_chains,
+                csv_path=unc_path(report_dir + f"SpecPipe_full_factorial_chains_in_ID_{cts}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
+            df_to_csv(
+                dataframe=df_full_chains_label,
+                csv_path=unc_path(report_dir + f"SpecPipe_full_factorial_chains_in_label_{cts}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
+            df_to_csv(
+                dataframe=df_exec_chains,
+                csv_path=unc_path(report_dir + f"SpecPipe_exec_chains_in_ID_{cts}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
+            df_to_csv(
+                dataframe=df_exec_chains_label,
+                csv_path=unc_path(report_dir + f"SpecPipe_exec_chains_in_label_{cts}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
+            # Save SpecPipe copy
+            config_dill_path_copy = unc_path(
+                report_dir + f"SpecPipe_pipeline_configuration_{self.create_time}_copy_at_{cts}.dill"
+            )
+            dump_dill(
+                self,
+                target_file_path=config_dill_path_copy,
+                backup=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
         # Save SpecExp
         if save_spec_exp_config:
-            self.spec_exp.save_data_config(copy=copy)
+            # TODO: changed
+            self.spec_exp.save_data_config(
+                copy=copy,
+                _space_wait_timeout=self.space_wait_timeout,
+                _reserve_free_pct=self.reserve_free_pct,
+            )
 
         # Print output path
         print(
@@ -3186,8 +3120,10 @@ class SpecPipe:
             dump_path0 = config_file_path
 
         # Load to instance
-        with open(unc_path(dump_path0), 'rb') as f:
-            loaded_instance = dill.load(f)
+        # TODO: changed
+        # with open(unc_path(dump_path0), 'rb') as f:
+        #     loaded_instance = dill.load(f)
+        loaded_instance = load_dill(unc_path(dump_path0))
         # self.__dict__.update(loaded_instance.__dict__)
         for key, value in loaded_instance.__dict__.items():
             object.__setattr__(self, key, value)
@@ -3806,7 +3742,12 @@ class SpecPipe:
 
         # Group stats for preprocessing
         if summary:
-            _ = sample_group_stats(self.report_directory, is_regression=self._is_target_numeric)
+            _ = sample_group_stats(
+                report_directory=self.report_directory,
+                is_regression=self._is_target_numeric,
+                _space_wait_timeout=self.space_wait_timeout,
+                _reserve_free_pct=self.reserve_free_pct,
+            )
 
         # Recover NotGeoreferencedWarning
         warnings.simplefilter("default", NotGeoreferencedWarning)
@@ -3838,7 +3779,12 @@ class SpecPipe:
         Output sample results from all processing chains to files and update the resulting file paths.
         """
         # Store SpecExp configs
-        self.spec_exp.save_data_config(copy=dump_backup)
+        # TODO: changed
+        self.spec_exp.save_data_config(
+            copy=dump_backup,
+            _space_wait_timeout=self.space_wait_timeout,
+            _reserve_free_pct=self.reserve_free_pct,
+        )
 
         # Validate report directory
         if result_directory == "":
@@ -4001,6 +3947,7 @@ class SpecPipe:
             manager = _DummyManager()
         preprocess_status: dict = {
             'start_status': manager.list(),
+            'waiting_for_disk_space': manager.list(),
             'completion_status': manager.list(),
             'processed_image_init': manager.list(),
             'lock': manager.Lock(),
@@ -4243,6 +4190,8 @@ class SpecPipe:
                     n_step_choice_dict=n_step_choice_dict,
                     final_result_only=final_result_only,
                     backup=dump_backup,
+                    space_wait_timeout=self.space_wait_timeout,
+                    reserve_free_pct=self.reserve_free_pct,
                 )
         else:
             # Validate number of processors to use
@@ -4259,6 +4208,8 @@ class SpecPipe:
                 n_step_choice_dict=n_step_choice_dict,
                 final_result_only=final_result_only,
                 backup=dump_backup,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
             )
             # Processing - multiprocessing for loop
             with ProcessingPool(nodes=ncpu) as pool:
@@ -4476,7 +4427,7 @@ class SpecPipe:
             if not os.path.exists(unc_path(cdp)):
                 # TODO: raise ValueError(f"\nPreprocessing result file of chain {pchains[pci]} not found, path : \n{cdp}\n")  # noqa: E501
                 raise FileNotFoundError(f"\nPreprocessing-assembly result file not found, expected path : \n{cdp}\n")
-            cprocs = load_vars(unc_path(cdp))["chain_procs"]
+            cprocs = load_dill(unc_path(cdp))["chain_procs"]
             pachains_f.append(cprocs)
         spcs = set(pachains)
         spcf = set(pachains_f)
@@ -4508,10 +4459,10 @@ class SpecPipe:
                 if not os.path.exists(unc_path(log_path)):
                     rest_cd_paths = cd_paths
                 else:
-                    modeling_progress_log = load_vars(unc_path(log_path))["modeling_progress_log"]
+                    modeling_progress_log = load_dill(unc_path(log_path))["modeling_progress_log"]
                     rest_cd_paths = []
                     for cdp in cd_paths:
-                        cprocs = load_vars(unc_path(cdp))["chain_procs"]
+                        cprocs = load_dill(unc_path(cdp))["chain_procs"]
                         if cprocs not in modeling_progress_log:
                             rest_cd_paths.append(cdp)
                 if len(rest_cd_paths) == 0:
@@ -4545,7 +4496,7 @@ class SpecPipe:
                         # Progress
                         if show_progress:
                             print(f"\nModeling preprocessing result {pci + 1}/{len(rest_cd_paths)} :")
-                        pc_it = load_vars(unc_path(cdp))
+                        pc_it = load_dill(unc_path(cdp))
                         pc_sample_list = pc_it["chain_res"]
                         pc_sample_list = _target_type_validation_for_serialization(pc_sample_list)
                         pchain = pc_it["chain_procs"]  # Including assembly steps
@@ -4563,6 +4514,8 @@ class SpecPipe:
                             result_directory=result_directory,
                             lock=lock,
                             update_progress_log=True,
+                            space_wait_timeout=self.space_wait_timeout,
+                            reserve_free_pct=self.reserve_free_pct,
                         )
 
                     # Error handling
@@ -4599,12 +4552,14 @@ class SpecPipe:
                     result_directory=result_directory,
                     lock=lock,
                     update_progress_log=True,
+                    space_wait_timeout=self.space_wait_timeout,
+                    reserve_free_pct=self.reserve_free_pct,
                     # Assign applied functions
                     _model_evaluator=_model_evaluator,
                     _dl_val=_dl_val,
                     unc_path=unc_path,
-                    load_vars=load_vars,
-                    dump_vars=dump_vars,
+                    load_dill=load_dill,
+                    dump_dill=dump_dill,
                     _target_type_validation_for_serialization=_target_type_validation_for_serialization,
                     modeleva=ModelEva,
                     silent_all=True,
@@ -4636,14 +4591,23 @@ class SpecPipe:
         if summary:
             pipeline_config_dir = f"{self.report_directory}/SpecPipe_configuration/"
             model_evaluation_report_dir = f"{self.report_directory}/Modeling/Model_evaluation_reports/"
-            metrics_dict = performance_metrics_summary(pipeline_config_dir, model_evaluation_report_dir)
+            metrics_dict = performance_metrics_summary(
+                pipeline_config_dir=pipeline_config_dir,
+                model_evaluation_report_dir=model_evaluation_report_dir,
+                _space_wait_timeout=self.space_wait_timeout,
+                _reserve_free_pct=self.reserve_free_pct,
+            )
             _ = performance_marginal_stats(
                 report_directory=self.report_directory,
                 metrics_dict=metrics_dict,
+                _space_wait_timeout=self.space_wait_timeout,
+                _reserve_free_pct=self.reserve_free_pct,
             )
             _ = combined_model_marginal_stats(
                 report_directory=self.report_directory,
                 metrics_dict=metrics_dict,
+                _space_wait_timeout=self.space_wait_timeout,
+                _reserve_free_pct=self.reserve_free_pct,
             )
 
         # Store computation status

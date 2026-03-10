@@ -61,12 +61,15 @@ from sklearn.metrics import (
 # Visualization
 import matplotlib.pyplot as plt
 
-# Model to file
-import dill
-
 # Local
 from .roistats import round_digit
-from .specio import arraylike_validator, simple_type_validator, unc_path
+from .specio import (
+    arraylike_validator,
+    simple_type_validator,
+    unc_path,
+    dump_dill,
+    df_to_csv,
+)
 
 
 # %% Validate data types - for regression and classification distinguishing
@@ -444,6 +447,8 @@ class ModelEva:
         unseen_threshold: float = 0.0,
         result_backup: bool = False,
         silent_all: bool = False,
+        space_wait_timeout: int = 36000,
+        reserve_free_pct: float = 5.0,
     ) -> None:
         # Report dir
         report_directory = (report_directory.replace("\\", "/") + "/").replace("//", "/")
@@ -525,6 +530,10 @@ class ModelEva:
 
         # Silent all print and plotting
         self._silent_all: bool = silent_all
+
+        # File dumping parameters
+        self._space_wait_timeout: int = max(0, space_wait_timeout)
+        self._reserve_free_pct: float = max(0.01, reserve_free_pct)
 
     ## Read only or internal properties
     @property
@@ -770,6 +779,24 @@ class ModelEva:
         else:
             raise TypeError(f"silent_all must be bool, got : {value}, type: {type(value)}.")
 
+    @property
+    def space_wait_timeout(self) -> int:
+        return self._space_wait_timeout
+
+    @space_wait_timeout.setter
+    @simple_type_validator
+    def space_wait_timeout(self, value: int) -> None:
+        self._space_wait_timeout = max(0, value)
+
+    @property
+    def reserve_free_pct(self) -> float:
+        return self._reserve_free_pct
+
+    @reserve_free_pct.setter
+    @simple_type_validator
+    def reserve_free_pct(self, value: float) -> None:
+        self._reserve_free_pct = max(0.01, value)
+
     # Update sample_list data
     # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
     @simple_type_validator
@@ -864,7 +891,7 @@ class ModelEva:
             elif not self.is_regression:
                 if is_float(st[-2]):
                     raise TypeError(
-                        f"Target variable dtype cannot be float, but got type '{type(st[-2])}' at index {i}."
+                        f"Target variable dtype cannot be float, but got {st[-2]}, type '{type(st[-2])}' at index {i}."
                     )
                 elif type(st[-2]) is not type(y0):
                     raise TypeError(
@@ -1305,8 +1332,8 @@ class ModelEva:
         # Old: y_pred_proba = y_pred_proba.applymap(lambda x: np.nan if pd.isna(x) else x)
 
         # Convert back to array
-        y_true_proba = np.asarray(y_true_proba)
-        y_pred_proba = np.asarray(y_pred_proba)
+        y_true_proba = np.array(y_true_proba)
+        y_pred_proba = np.array(y_pred_proba)
 
         # Unseen class
         for ri, pp_row in enumerate(y_pred_proba):
@@ -1352,35 +1379,78 @@ class ModelEva:
 
         # Write result to file
         task_time = self._model_time
-        df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}.csv"), index=False)
+        # TODO: df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}.csv"), index=False)
+        df_to_csv(
+            dataframe=df_val,
+            csv_path=unc_path(dout + f"Validation_results_{self.model_label}.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         dill_result_path = unc_path(
             dout + f".__swectral_dill_data/.__swectral_core_result_Validation_results_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(df_val, open(dill_result_path, "wb"))
+        # TODO: dill.dump(df_val, open(dill_result_path, "wb"))
+        dump_dill(
+            df_val,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
+
         if self.result_backup:
-            df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"), index=False)
+            # TODO: df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"), index=False)  # noqa: E501
+            df_to_csv(
+                dataframe=df_val,
+                csv_path=unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
         # Write transformer and estimator info if a combined transformer-estimator model
-        if hasattr(model, "_is_trans_classifier"):
-            assert hasattr(model, 'data_transformers')
-            assert hasattr(model, 'classifier')
-            assert hasattr(model, '_transformer_labels')
+        if hasattr(model, "_is_combined_classifier"):
+            assert hasattr(model, 'trainable_processors_')
+            assert hasattr(model, 'classifier_')
+            assert hasattr(model, '_preprocessor_labels')
             assert hasattr(model, '_classifier_label')
-            model_transformers = model.data_transformers
-            model_estimator = model.classifier
-            model_transformer_labels = model._transformer_labels
+            model_transformers = model.trainable_processors_
+            model_estimator = model.classifier_
+            model_preprocessor_labels = model._preprocessor_labels
             model_estimator_label = model._classifier_label
             combined_model_info_path = unc_path(dout + ".__swectral_dill_data/.__swectral_Combined_model_info.dill")
             os.makedirs(unc_path(os.path.dirname(combined_model_info_path)), exist_ok=True)
-            dill.dump(
+            # TODO: changed
+            # dill.dump(
+            #     {
+            #         'model_transformers': model_transformers,
+            #         'model_estimator': model_estimator,
+            #         'model_preprocessor_labels': model_preprocessor_labels,
+            #         'model_estimator_label': model_estimator_label,
+            #     },
+            #     open(combined_model_info_path, "wb"),
+            # )
+            dump_dill(
                 {
                     'model_transformers': model_transformers,
                     'model_estimator': model_estimator,
-                    'model_transformer_labels': model_transformer_labels,
+                    'model_preprocessor_labels': model_preprocessor_labels,
                     'model_estimator_label': model_estimator_label,
                 },
-                open(combined_model_info_path, "wb"),
+                target_file_path=unc_path(combined_model_info_path),
+                backup=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # Classifier metrics
@@ -1531,15 +1601,43 @@ class ModelEva:
 
         # Save metrics df to CSV
         task_time = self._model_time
-        metrics_df.to_csv(unc_path(dout + f"Classification_performance_{self.model_label}.csv"), index=False)
+        # TODO: metrics_df.to_csv(unc_path(dout + f"Classification_performance_{self.model_label}.csv"), index=False)
+        df_to_csv(
+            dataframe=metrics_df,
+            csv_path=unc_path(dout + f"Classification_performance_{self.model_label}.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         dill_result_path = unc_path(
             dout + f".__swectral_dill_data/.__swectral_core_result_Classification_performance_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(metrics_df, open(dill_result_path, "wb"))
+        # TODO: dill.dump(metrics_df, open(dill_result_path, "wb"))
+        dump_dill(
+            metrics_df,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
-            metrics_df.to_csv(
-                unc_path(dout + f"Classification_performance_{self.model_label}_{task_time}.csv"), index=False
+            # TODO: changed
+            # metrics_df.to_csv(
+            #     unc_path(dout + f"Classification_performance_{self.model_label}_{task_time}.csv"), index=False
+            # )
+            df_to_csv(
+                dataframe=metrics_df,
+                csv_path=unc_path(dout + f"Classification_performance_{self.model_label}_{task_time}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # Class ROC plots of classification performance
@@ -1695,7 +1793,17 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_ROC_curve_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(plt.gcf(), open(dill_result_path, "wb"))
+        # dill.dump(plt.gcf(), open(dill_result_path, "wb"))
+        dump_dill(
+            plt.gcf(),
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
+
         if self.result_backup:
             plt.savefig(dout + f"ROC_curve_{self.model_label}_{task_time}.png", dpi=300)
         if show_plot:
@@ -1796,17 +1904,47 @@ class ModelEva:
 
         # Save case report df to CSV
         task_time = self._model_time
-        df_res.to_csv(unc_path(dout + f"Residual_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID")
+        # TODO: df_res.to_csv(unc_path(dout + f"Residual_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID")  # noqa: E501
+        df_to_csv(
+            dataframe=df_res,
+            csv_path=unc_path(dout + f"Residual_analysis_{self.model_label}.csv"),
+            index=True,
+            index_label="Sample_ID",
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         dill_result_path = unc_path(
             dout + f".__swectral_dill_data/.__swectral_core_result_Residual_analysis_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(df_res, open(dill_result_path, "wb"))
+        # TODO: dill.dump(df_res, open(dill_result_path, "wb"))
+        dump_dill(
+            df_res,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
-            df_res.to_csv(
-                unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
+            # TODO: changed
+            # df_res.to_csv(
+            #     unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
+            #     index=True,
+            #     index_label="Sample_ID",
+            # )
+            df_to_csv(
+                dataframe=df_res,
+                csv_path=unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
                 index=True,
                 index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # Data split indices for influence analysis
@@ -1917,8 +2055,8 @@ class ModelEva:
             # Old: p_full = p_full.applymap(lambda x: np.nan if pd.isna(x) else x)
 
             # Convert back to array
-            y_p_test = np.asarray(y_p_test)
-            p_full = np.asarray(p_full)
+            y_p_test = np.array(y_p_test)
+            p_full = np.array(p_full)
 
             # Unseen class
             for ri, pp_row in enumerate(p_full):
@@ -1963,7 +2101,7 @@ class ModelEva:
                 # Old: p_loo = p_loo.applymap(lambda x: np.nan if pd.isna(x) else x)
 
                 # Convert back to array
-                p_loo = np.asarray(p_loo)
+                p_loo = np.array(p_loo)
 
                 # Unseen class
                 for ri, pp_row in enumerate(p_loo):
@@ -2005,19 +2143,50 @@ class ModelEva:
 
         # Save metrics df to CSV
         task_time = self._model_time
-        influence_df.to_csv(
-            unc_path(dout + f"Influence_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID"
+        # TODO: changed
+        # influence_df.to_csv(
+        #     unc_path(dout + f"Influence_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID"
+        # )
+        df_to_csv(
+            dataframe=influence_df,
+            csv_path=unc_path(dout + f"Influence_analysis_{self.model_label}.csv"),
+            index=True,
+            index_label="Sample_ID",
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
         )
         dill_result_path = unc_path(
             dout + f".__swectral_dill_data/.__swectral_core_result_Influence_analysis_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(influence_df, open(dill_result_path, "wb"))
+        # TODO: dill.dump(influence_df, open(dill_result_path, "wb"))
+        dump_dill(
+            influence_df,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
-            influence_df.to_csv(
-                unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
+            # TODO: changed
+            # influence_df.to_csv(
+            #     unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
+            #     index=True,
+            #     index_label="Sample_ID",
+            # )
+            df_to_csv(
+                dataframe=influence_df,
+                csv_path=unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
                 index=True,
                 index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # Evaluation of classifier performance
@@ -2296,35 +2465,77 @@ class ModelEva:
 
         # Write result to file
         task_time = self._model_time
-        df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}.csv"), index=False)
+        # TODO: df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}.csv"), index=False)
+        df_to_csv(
+            dataframe=df_val,
+            csv_path=unc_path(dout + f"Validation_results_{self.model_label}.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         dill_result_path = unc_path(
             dout + f".__swectral_dill_data/.__swectral_core_result_Validation_results_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(df_val, open(dill_result_path, "wb"))
+        # TODO: dill.dump(df_val, open(dill_result_path, "wb"))
+        dump_dill(
+            df_val,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
-            df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"), index=False)
+            # df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"), index=False)
+            df_to_csv(
+                dataframe=df_val,
+                csv_path=unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
         # Write transformer and estimator info if a combined transformer-estimator model
-        if hasattr(model, "_is_trans_regressor"):
-            assert hasattr(model, 'data_transformers')
-            assert hasattr(model, 'regressor')
-            assert hasattr(model, '_transformer_labels')
+        if hasattr(model, "_is_combined_regressor"):
+            assert hasattr(model, 'trainable_processors_')
+            assert hasattr(model, 'regressor_')
+            assert hasattr(model, '_preprocessor_labels')
             assert hasattr(model, '_regressor_label')
-            model_transformers = model.data_transformers
-            model_estimator = model.regressor
-            model_transformer_labels = model._transformer_labels
+            model_transformers = model.trainable_processors_
+            model_estimator = model.regressor_
+            model_preprocessor_labels = model._preprocessor_labels
             model_estimator_label = model._regressor_label
             combined_model_info_path = unc_path(dout + ".__swectral_dill_data/.__swectral_Combined_model_info.dill")
             os.makedirs(unc_path(os.path.dirname(combined_model_info_path)), exist_ok=True)
-            dill.dump(
+            # TODO: changed
+            # dill.dump(
+            #     {
+            #         'model_transformers': model_transformers,
+            #         'model_estimator': model_estimator,
+            #         'model_preprocessor_labels': model_preprocessor_labels,
+            #         'model_estimator_label': model_estimator_label,
+            #     },
+            #     open(combined_model_info_path, "wb"),
+            # )
+            dump_dill(
                 {
                     'model_transformers': model_transformers,
                     'model_estimator': model_estimator,
-                    'model_transformer_labels': model_transformer_labels,
+                    'model_preprocessor_labels': model_preprocessor_labels,
                     'model_estimator_label': model_estimator_label,
                 },
-                open(combined_model_info_path, "wb"),
+                target_file_path=unc_path(combined_model_info_path),
+                backup=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # Regressor metrics
@@ -2397,15 +2608,43 @@ class ModelEva:
 
         # Save metrics df to CSV
         task_time = self._model_time
-        metrics_df.to_csv(unc_path(dout + f"Regression_performance_{self.model_label}.csv"), index=False)
+        # TODO: metrics_df.to_csv(unc_path(dout + f"Regression_performance_{self.model_label}.csv"), index=False)
+        df_to_csv(
+            dataframe=metrics_df,
+            csv_path=unc_path(dout + f"Regression_performance_{self.model_label}.csv"),
+            index=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         dill_result_path = unc_path(
             dout + f".__swectral_dill_data/.__swectral_core_result_Regression_performance_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(metrics_df, open(dill_result_path, "wb"))
+        # TODO: dill.dump(metrics_df, open(dill_result_path, "wb"))
+        dump_dill(
+            metrics_df,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
-            metrics_df.to_csv(
-                unc_path(dout + f"Regression_performance_{self.model_label}_{task_time}.csv"), index=False
+            # TODO: changed
+            # metrics_df.to_csv(
+            #     unc_path(dout + f"Regression_performance_{self.model_label}_{task_time}.csv"), index=False
+            # )
+            df_to_csv(
+                dataframe=metrics_df,
+                csv_path=unc_path(dout + f"Regression_performance_{self.model_label}_{task_time}.csv"),
+                index=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # Scatter plots for regression performance evaluation
@@ -2557,7 +2796,16 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Scatter_plot_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(plt.gcf(), open(dill_result_path, "wb"))
+        # TODO: dill.dump(plt.gcf(), open(dill_result_path, "wb"))
+        dump_dill(
+            plt.gcf(),
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
             plt.savefig(unc_path(dout + f"Scatter_plot_{self.model_label}_{task_time}.png"), dpi=300)
         if show_plot:
@@ -2731,7 +2979,16 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Residual_plot_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(plt.gcf(), open(dill_result_path, "wb"))
+        # TODO: dill.dump(plt.gcf(), open(dill_result_path, "wb"))
+        dump_dill(
+            plt.gcf(),
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
             plt.savefig(unc_path(dout + f"Residual_plot_{self.model_label}_{task_time}.png"), dpi=300)
         if show_plot:
@@ -2784,17 +3041,47 @@ class ModelEva:
 
         # Save case report df to CSV
         task_time = self._model_time
-        df_res.to_csv(unc_path(dout + f"Residual_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID")
+        # TODO: df_res.to_csv(unc_path(dout + f"Residual_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID")  # noqa: E501
+        df_to_csv(
+            dataframe=df_res,
+            csv_path=unc_path(dout + f"Residual_analysis_{self.model_label}.csv"),
+            index=True,
+            index_label="Sample_ID",
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         dill_result_path = unc_path(
             dout + f".__swectral_dill_data/.__swectral_core_result_Residual_analysis_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(df_res, open(dill_result_path, "wb"))
+        # TODO: dill.dump(df_res, open(dill_result_path, "wb"))
+        dump_dill(
+            df_res,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
-            df_res.to_csv(
-                unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
+            # TODO: changed
+            # df_res.to_csv(
+            #     unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
+            #     index=True,
+            #     index_label="Sample_ID",
+            # )
+            df_to_csv(
+                dataframe=df_res,
+                csv_path=unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
                 index=True,
                 index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # LOO training for data point influential analysis
@@ -2919,19 +3206,50 @@ class ModelEva:
 
         # Save metrics df to CSV
         task_time = self._model_time
-        influence_df.to_csv(
-            unc_path(dout + f"Influence_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID"
+        # TODO: changed
+        # influence_df.to_csv(
+        #     unc_path(dout + f"Influence_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID"
+        # )
+        df_to_csv(
+            dataframe=influence_df,
+            csv_path=unc_path(dout + f"Influence_analysis_{self.model_label}.csv"),
+            index=True,
+            index_label="Sample_ID",
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
         )
         dill_result_path = unc_path(
             dout + f".__swectral_dill_data/.__swectral_core_result_Influence_analysis_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        dill.dump(influence_df, open(dill_result_path, "wb"))
+        # TODO: dill.dump(influence_df, open(dill_result_path, "wb"))
+        dump_dill(
+            influence_df,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
-            influence_df.to_csv(
-                unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
+            # TODO: changed
+            # influence_df.to_csv(
+            #     unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
+            #     index=True,
+            #     index_label="Sample_ID",
+            # )
+            df_to_csv(
+                dataframe=influence_df,
+                csv_path=unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
                 index=True,
                 index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # Evaluation of regressor performance
@@ -3187,12 +3505,32 @@ class ModelEva:
             dump_path = unc_path(dout + dump_name + ".dill")
             dump_path1 = unc_path(dout + dump_name1 + ".dill")
             # Dump model
-            with open(dump_path, "wb") as f:
-                dill.dump(dump_dict, f)
+            # TODO: changed
+            # with open(dump_path, "wb") as f:
+            #     dill.dump(dump_dict, f)
+            dump_dill(
+                dump_dict,
+                target_file_path=unc_path(dump_path),
+                backup=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
             # Dump model backup
             if self.result_backup:
-                with open(dump_path1, "wb") as f:
-                    dill.dump(dump_dict, f)
+                # TODO: changed
+                # with open(dump_path1, "wb") as f:
+                #     dill.dump(dump_dict, f)
+                dump_dill(
+                    dump_dict,
+                    target_file_path=unc_path(dump_path1),
+                    backup=False,
+                    space_wait_timeout=self.space_wait_timeout,
+                    reserve_free_pct=self.reserve_free_pct,
+                    min_sec_random_wait=5.0,
+                    max_sec_random_wait=5.0,
+                )
 
         # Return results
         if return_result:
@@ -3278,32 +3616,118 @@ class ModelEva:
         dump_path1 = unc_path(dout + dump_name1 + ".dill")
 
         # Dump model
-        with open(dump_path, "wb") as f:
-            dill.dump(dump_dict, f)
+        # TODO: changed
+        # with open(dump_path, "wb") as f:
+        #     dill.dump(dump_dict, f)
+        dump_dill(
+            dump_dict,
+            target_file_path=unc_path(dump_path),
+            backup=False,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         if self.result_backup:
-            with open(dump_path1, "wb") as f:
-                dill.dump(dump_dict, f)
+            # TODO: changed
+            # with open(dump_path1, "wb") as f:
+            #     dill.dump(dump_dict, f)
+            dump_dill(
+                dump_dict,
+                target_file_path=unc_path(dump_path1),
+                backup=False,
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
         # Write fold data to file
         if dump_associated_data:
             wname_X0 = f"val_X-train_fold-{fold_i}_{self._model_label}"  # noqa: N806
             wpath_X0 = unc_path(dout + wname_X0 + ".csv")  # noqa: N806
-            df_X0.to_csv(wpath_X0, header=True, index=True, index_label="Sample_ID")
+            # TODO: df_X0.to_csv(wpath_X0, header=True, index=True, index_label="Sample_ID")
+            df_to_csv(
+                dataframe=df_X0,
+                csv_path=wpath_X0,
+                header=True,
+                index=True,
+                index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
             wname_X1 = f"val_X-test_fold-{fold_i}_{self._model_label}"  # noqa: N806
             wpath_X1 = unc_path(dout + wname_X1 + ".csv")  # noqa: N806
-            df_X1.to_csv(wpath_X1, header=True, index=True, index_label="Sample_ID")
+            # TODO: df_X1.to_csv(wpath_X1, header=True, index=True, index_label="Sample_ID")
+            df_to_csv(
+                dataframe=df_X1,
+                csv_path=wpath_X1,
+                header=True,
+                index=True,
+                index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
             wname_y = f"val_y_fold-{fold_i}_{self._model_label}"
             wpath_y = unc_path(dout + wname_y + ".csv")
-            dfr.to_csv(wpath_y, header=True, index=True, index_label="Sample_ID")
+            # TODO: dfr.to_csv(wpath_y, header=True, index=True, index_label="Sample_ID")
+            df_to_csv(
+                dataframe=dfr,
+                csv_path=wpath_y,
+                header=True,
+                index=True,
+                index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
         # Write backup
         if self.result_backup:
             wname_X0 = f"val_X-train_fold-{fold_i}_{self._model_label}_{self._model_time}"  # noqa: N806
             wpath_X0 = unc_path(dout + wname_X0 + ".csv")  # noqa: N806
-            df_X0.to_csv(wpath_X0, header=True, index=True, index_label="Sample_ID")
+            # TODO: df_X0.to_csv(wpath_X0, header=True, index=True, index_label="Sample_ID")
+            df_to_csv(
+                dataframe=df_X0,
+                csv_path=wpath_X0,
+                header=True,
+                index=True,
+                index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
             wname_X1 = f"val_X-test_fold-{fold_i}_{self._model_label}_{self._model_time}"  # noqa: N806
             wpath_X1 = unc_path(dout + wname_X1 + ".csv")  # noqa: N806
-            df_X1.to_csv(wpath_X1, header=True, index=True, index_label="Sample_ID")
+            # TODO: df_X1.to_csv(wpath_X1, header=True, index=True, index_label="Sample_ID")
+            df_to_csv(
+                dataframe=df_X1,
+                csv_path=wpath_X1,
+                header=True,
+                index=True,
+                index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
             wname_y = f"val_y_fold-{fold_i}_{self._model_label}_{self._model_time}"
             wpath_y = unc_path(dout + wname_y + ".csv")
-            dfr.to_csv(wpath_y, header=True, index=True, index_label="Sample_ID")
+            # TODO: dfr.to_csv(wpath_y, header=True, index=True, index_label="Sample_ID")
+            df_to_csv(
+                dataframe=dfr,
+                csv_path=wpath_y,
+                header=True,
+                index=True,
+                index_label="Sample_ID",
+                space_wait_timeout=self.space_wait_timeout,
+                reserve_free_pct=self.reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )

@@ -17,10 +17,11 @@ __all__ = [
     "SpecPipe",
     "raster_rgb_preview",
     ### Model combiners
-    "combine_transformer_classifier",
-    "combine_transformer_regressor",
-    "factorial_transformer_chains",
+    "combine_classifier",
+    "combine_regressor",
+    "factorial_model_chains",
     "IdentityTransformer",
+    "IdentityResampler",
     ### Raster operation
     "croproi",
     "resample_roi",
@@ -68,10 +69,11 @@ from .example_data import create_example_raster, create_example_roi_xml, create_
 
 ## Model combiners
 from .modelconnector import (
-    factorial_transformer_chains,
-    combine_transformer_classifier,
-    combine_transformer_regressor,
+    factorial_model_chains,
+    combine_classifier,
+    combine_regressor,
     IdentityTransformer,
+    IdentityResampler,
 )
 
 ## Raster operation

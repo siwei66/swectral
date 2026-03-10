@@ -43,10 +43,11 @@ from .modeleva import ModelEva
 from .rasterop import pixel_apply
 from .specio import (
     arraylike_validator,
-    dump_vars,
-    load_vars,
+    dump_dill,
+    load_dill,
     simple_type_validator,
     unc_path,
+    _wait_for_free_space,
     df_to_csv,
 )
 from .pipeline_validator import (
@@ -114,10 +115,13 @@ def _preprocessing_sample(
     dump_directory: str = "",
     # Update progress status, use in a processing loop for resume
     update_progress_log: bool = False,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Explicitly load function for multiprocessing
     _dl_val: Callable = _dl_val,
     pixel_apply: Callable = pixel_apply,
-    dump_vars: Callable = dump_vars,
+    dump_dill: Callable = dump_dill,
     unc_path: Callable = unc_path,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
@@ -148,10 +152,13 @@ def _preprocessing_sample(
     dump_directory: str = "",
     # Update progress status, use in a processing loop for resume
     update_progress_log: bool = False,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Explicitly load function for multiprocessing
     _dl_val: Callable = _dl_val,
     pixel_apply: Callable = pixel_apply,
-    dump_vars: Callable = dump_vars,
+    dump_dill: Callable = dump_dill,
     unc_path: Callable = unc_path,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
@@ -182,10 +189,13 @@ def _preprocessing_sample(
     dump_directory: str = "",
     # Update progress status, use in a processing loop for resume
     update_progress_log: bool = False,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Explicitly load function for multiprocessing
     _dl_val: Callable = _dl_val,
     pixel_apply: Callable = pixel_apply,
-    dump_vars: Callable = dump_vars,
+    dump_dill: Callable = dump_dill,
     unc_path: Callable = unc_path,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
@@ -216,10 +226,13 @@ def _preprocessing_sample(
     dump_directory: str = "",
     # Update progress status, use in a processing loop for resume
     update_progress_log: bool = False,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Explicitly load function for multiprocessing
     _dl_val: Callable = _dl_val,
     pixel_apply: Callable = pixel_apply,
-    dump_vars: Callable = dump_vars,
+    dump_dill: Callable = dump_dill,
     unc_path: Callable = unc_path,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
@@ -250,10 +263,13 @@ def _preprocessing_sample(
     dump_directory: str = "",
     # Update progress status, use in a processing loop for resume
     update_progress_log: bool = False,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Explicitly load function for multiprocessing
     _dl_val: Callable = _dl_val,
     pixel_apply: Callable = pixel_apply,
-    dump_vars: Callable = dump_vars,
+    dump_dill: Callable = dump_dill,
     unc_path: Callable = unc_path,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
@@ -294,10 +310,13 @@ def _preprocessing_sample(  # noqa: C901
     dump_directory: str = "",
     # Update progress status, use in a processing loop for resume
     update_progress_log: bool = False,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Explicitly load function for multiprocessing
     _dl_val: Callable = _dl_val,
     pixel_apply: Callable = pixel_apply,
-    dump_vars: Callable = dump_vars,
+    dump_dill: Callable = dump_dill,
     unc_path: Callable = unc_path,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
@@ -468,6 +487,8 @@ def _preprocessing_sample(  # noqa: C901
             preprocess_status=preprocess_status,
             final_result_only=final_result_only,
             num_type=num_type,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
         )
 
         # Collect test preprocessing results of current chain (chain i)
@@ -491,7 +512,16 @@ def _preprocessing_sample(  # noqa: C901
             file_name = f"PreprocessingResult_sample_{sample_data_label}"
         if dump_result:
             chain_result_path = sdir + f"{file_name}.dill"
-            dump_vars(chain_result_path, status_results_out, backup=dump_backup)
+            # TODO: changed
+            dump_dill(
+                status_results_out,
+                target_file_path=unc_path(chain_result_path),
+                backup=dump_backup,
+                space_wait_timeout=space_wait_timeout,
+                reserve_free_pct=reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
         # Update progress
         step_dir = specpipe_report_directory + "Preprocessing/Step_results/"
@@ -568,6 +598,9 @@ def _chain_step_processor(  # noqa: C901
     final_result_only: bool,
     num_type: Union[str, type],
     *,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
     os: ModuleType = os,
@@ -652,6 +685,8 @@ def _chain_step_processor(  # noqa: C901
                         calc_status=calc_status,
                         preprocess_status=preprocess_status,
                         num_type=num_type,
+                        space_wait_timeout=space_wait_timeout,
+                        reserve_free_pct=reserve_free_pct,
                     )
                 except Exception as e:
                     method_item_tuple = tuple(method_item)
@@ -691,7 +726,14 @@ def _chain_step_processor(  # noqa: C901
     return status_results
 
 
-def _dump_disk_backed_data(num_result: object, data_path: str, num_type: Union[str, type] = np.float32) -> dict:
+def _dump_disk_backed_data(
+    num_result: object,
+    data_path: str,
+    num_type: Union[str, type] = np.float32,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
+) -> dict:
     """Dump disk backed data according to given path and return the handle. data_path must have no extension."""
     data_path = os.path.splitext(data_path)[0]
     # Dump to npy if array-like
@@ -701,13 +743,32 @@ def _dump_disk_backed_data(num_result: object, data_path: str, num_type: Union[s
         num_result = num_result.astype(num_type)
         data_path_ext = unc_path(data_path + ".npy")
         loader_type = "numpy"
+        # Disk space safeguard
+        _wait_for_free_space(
+            obj=num_result,
+            path=data_path_ext,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+            obj_size_buffer_coeff=1.1,
+        )
         np.save(data_path_ext, num_result)
     # Else to dill
     except Exception:
-        data_path_ext = unc_path(data_path + ".dill")
+        # TODO: data_path_ext = unc_path(data_path + ".dill")
         loader_type = "dill"
         # Dill dump
-        dump_vars(data_path_ext, {"data": num_result}, backup=False)
+        # TODO: dump_dill(data_path_ext, {"data": num_result}, backup=False)
+        dump_dill(
+            {"data": num_result},
+            target_file_path=unc_path(data_path_ext),
+            backup=False,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
     # Return handle
     return {"__disk_backed__": True, "path": data_path_ext, "loader": loader_type}
 
@@ -725,7 +786,7 @@ def _load_disk_backed_data(handle_obj: object) -> object:
             if loader_type == "numpy":
                 return np.load(handle_obj["path"], allow_pickle=False)
             elif loader_type == "dill":
-                return load_vars(handle_obj["path"])["data"]
+                return load_dill(handle_obj["path"])["data"]
             else:
                 raise ValueError(f"handle loader type must be 'numpy' or 'dill', got: {loader_type}")
         else:
@@ -752,6 +813,9 @@ def _single_process_handler(
     preprocess_status: dict,
     num_type: Union[str, type],
     *,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
     os: ModuleType = os,
@@ -786,7 +850,13 @@ def _single_process_handler(
         num_result = method_func(step_input_data, roi_coords)
         # Dump result
         data_path = f"{inter_sdir}Sample_{sample_data_label}_step_{stepi}_chain_{chain_ind}"
-        result_data_handle = _dump_disk_backed_data(num_result=num_result, data_path=data_path, num_type=num_type)
+        result_data_handle = _dump_disk_backed_data(
+            num_result=num_result,
+            data_path=data_path,
+            num_type=num_type,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
+        )
         # Store handle
         chain_result.append(result_data_handle)
     # ============ Extracted data / Sample data processing ============
@@ -797,7 +867,13 @@ def _single_process_handler(
         num_result = method_func(step_input_data_loaded)
         # Dump result
         data_path = f"{inter_sdir}Sample_{sample_data_label}_step_{stepi}_chain_{chain_ind}"
-        result_data_handle = _dump_disk_backed_data(num_result=num_result, data_path=data_path, num_type=num_type)
+        result_data_handle = _dump_disk_backed_data(
+            num_result=num_result,
+            data_path=data_path,
+            num_type=num_type,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
+        )
         # Store handle
         chain_result.append(result_data_handle)
     # Save calculated step results
@@ -814,6 +890,9 @@ def _image_processing_step(
     method_func: Callable,
     preprocess_status: dict,
     *,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
     os: ModuleType = os,
@@ -861,11 +940,14 @@ def _image_processing_step(
         return str(output_image_path)
     else:
         output_image_path = _image_processor(
-            input_image_path,
-            dl_in,
-            preprocessed_img_dir,
-            method_func,
-            output_image_path,
+            input_image_path=input_image_path,
+            dl_in=dl_in,
+            preprocessed_img_dir=preprocessed_img_dir,
+            method_func=method_func,
+            output_image_path=output_image_path,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
+            preprocess_status=preprocess_status,
         )
         # Write completion status and process results
         with lock:
@@ -873,11 +955,15 @@ def _image_processing_step(
         return str(output_image_path)
 
 
+@simple_type_validator
 def _wait_for_completion(
     output_image_path: str,
     preprocess_status: dict,
     *,
     max_wait_time: int = 10800,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Dependencies for multiprocessing
     time: ModuleType = time,
     np: ModuleType = np,
@@ -888,13 +974,18 @@ def _wait_for_completion(
     max_wait_time = max(max_wait_time, 1)
     lock = preprocess_status['lock']
     completion_status = preprocess_status['completion_status']
+    # TODO: new
+    waiting_for_disk_space = preprocess_status['waiting_for_disk_space']
     while True:
         with lock:
             if output_image_path in completion_status:
                 break
+            # TODO: new
+            if output_image_path in waiting_for_disk_space:
+                start_time = time.time()
         if time.time() - start_time > max_wait_time:
             raise TimeoutError(f"Image processing timeout, target image:\n{output_image_path}")
-        time.sleep(np.random.uniform(2, 3))
+        time.sleep(np.random.uniform(4, 6))
     return None
 
 
@@ -905,6 +996,10 @@ def _image_processor(
     method_func: Callable,
     output_image_path: str,
     *,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
+    preprocess_status: Optional[dict[str, Any]] = None,
     # Dependencies for multiprocessing
     copy: ModuleType = copy,
     os: ModuleType = os,
@@ -934,6 +1029,9 @@ def _image_processor(
             output_image_path,
             progress=False,
             override=False,
+            _space_wait_timeout=space_wait_timeout,
+            _reserve_free_pct=reserve_free_pct,
+            _preprocess_status=preprocess_status,
         )
     # Return path of processed image
     return output_image_path
@@ -953,6 +1051,8 @@ def _sample_list_constructor(  # noqa: C901
     to_csv: bool = True,
     show_progress: bool = False,
     backup: bool = False,
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
 ) -> None:
     """
     Convert Step_result data from file to modeling-ready sample_list data.
@@ -1009,7 +1109,7 @@ def _sample_list_constructor(  # noqa: C901
         # Preprocessing results
         pre_results = []
         for spath in sd_paths:
-            sdata = load_vars(unc_path(spath))
+            sdata = load_dill(unc_path(spath))
             status_results = sdata["status_results"][-1]
             # Sample ID and sample target value
             sample_id = sdata["ID"]
@@ -1053,10 +1153,15 @@ def _sample_list_constructor(  # noqa: C901
         # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
         # Typing: list[tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any,arraylike_validator(ndim=1)]]]  # noqa: E501
         res_path_dill = preprocess_result_dir + chain_name1 + ".dill"
-        dump_vars(
-            unc_path(res_path_dill),
+        # TODO: changed
+        dump_dill(
             {"chain_ind": str(pci), "chain_procs": pchain, "chain_res": pre_results},
+            target_file_path=unc_path(res_path_dill),
             backup=backup,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
         )
         finished_paths.append(res_path_dill)
 
@@ -1099,13 +1204,32 @@ def _sample_list_constructor(  # noqa: C901
             df_chain_res.columns = ["Preprocessing_chain"] + coln_chain_res
             # Save table to CSV
             res_path_csv = preprocess_result_dir + chain_name1 + ".csv"
-            df_to_csv(df_chain_res, res_path_csv, index=False, return_path=False)
+            # TODO: df_chain_res.to_csv(unc_path(res_path_csv), index=False)
+            df_to_csv(
+                dataframe=df_chain_res,
+                csv_path=unc_path(res_path_csv),
+                index=False,
+                space_wait_timeout=space_wait_timeout,
+                reserve_free_pct=reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
     # Dump sample_list file paths for assembly processes
     finished_paths_path_dir = result_directory + "/Assembly/.__swectral_dill_data/"
     os.makedirs(unc_path(finished_paths_path_dir), exist_ok=True)
     path_file_path = finished_paths_path_dir + ".__sample_list_paths_finished.dill"
-    dump_vars(unc_path(path_file_path), {"finished_paths": finished_paths}, backup=backup)
+    # TODO: dump_dill(unc_path(path_file_path), {"finished_paths": finished_paths}, backup=backup)
+    # TODO: changed
+    dump_dill(
+        {"finished_paths": finished_paths},
+        target_file_path=unc_path(path_file_path),
+        backup=backup,
+        space_wait_timeout=space_wait_timeout,
+        reserve_free_pct=reserve_free_pct,
+        min_sec_random_wait=5.0,
+        max_sec_random_wait=5.0,
+    )
 
     # Add line after progress bar
     print("")
@@ -1124,6 +1248,8 @@ def _single_preprocess_assembly(
     n_step_choice_dict: dict[int, int],
     final_result_only: bool,
     backup: bool,
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
 ) -> None:
     """Apply the entire assembly stage on a preprocessing chain result."""
     # Import dependencies
@@ -1150,6 +1276,8 @@ def _single_preprocess_assembly(
                     assembly_chains=assembly_chains,
                     n_step_choice_dict=n_step_choice_dict,
                     backup=backup,
+                    space_wait_timeout=space_wait_timeout,
+                    reserve_free_pct=reserve_free_pct,
                 )
                 snum += 1
             # Remove used data files after computation of current step result if final_result_only
@@ -1197,14 +1325,16 @@ def _apply_step_assembly(
     assembly_chains: list[tuple[str, ...]],
     n_step_choice_dict: dict[int, int],
     backup: bool,
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
 ) -> None:
     """Apply assembly method of an assembly step."""
 
     # Imports
     import os
     from swectral.specio import (
-        load_vars,
-        dump_vars,
+        load_dill,
+        dump_dill,
         unc_path,
     )
 
@@ -1224,7 +1354,7 @@ def _apply_step_assembly(
     # Primary assembly - in addition to basic default assembly
     if stepi == 0:
         # Input path - previous step
-        pc_sample_list_data = load_vars(dpath)
+        pc_sample_list_data = load_dill(dpath)
         # Get sample list data
         chain_ind = pc_sample_list_data["chain_ind"]
         chain_procs = pc_sample_list_data["chain_procs"]
@@ -1240,10 +1370,20 @@ def _apply_step_assembly(
         else:
             output_path = assem_interm_path + output_filename
         # Dump processed sample_list
-        dump_vars(
-            unc_path(output_path),
+        # dump_dill(
+        #     unc_path(output_path),
+        #     {"chain_ind": chain_ind, "chain_procs": chain_procs, "chain_res": chain_res},
+        #     backup=backup,
+        # )
+        # TODO: changed
+        dump_dill(
             {"chain_ind": chain_ind, "chain_procs": chain_procs, "chain_res": chain_res},
+            target_file_path=unc_path(output_path),
             backup=backup,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
         )
 
     # Secondary assembly
@@ -1253,7 +1393,7 @@ def _apply_step_assembly(
             # Input path - previous step
             input_filename = pc_fname_split[0] + f"_a&{stepi-1}&{psnum}" + pc_fname_split[1]
             input_path = assem_interm_path + input_filename
-            pc_sample_list_data = load_vars(input_path)
+            pc_sample_list_data = load_dill(input_path)
             # Get sample list data
             chain_ind = pc_sample_list_data["chain_ind"]
             chain_procs = pc_sample_list_data["chain_procs"]
@@ -1269,10 +1409,15 @@ def _apply_step_assembly(
             else:
                 output_path = assem_interm_path + output_filename
             # Dump processed sample_list
-            dump_vars(
-                unc_path(output_path),
+            # TODO: changed
+            dump_dill(
                 {"chain_ind": chain_ind, "chain_procs": chain_procs, "chain_res": chain_res},
+                target_file_path=unc_path(output_path),
                 backup=backup,
+                space_wait_timeout=space_wait_timeout,
+                reserve_free_pct=reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
 
@@ -1306,6 +1451,9 @@ class _ModelMethod:
         residual_config: Union[str, dict[str, Any], None],
         residual_plot_config: Union[str, dict[str, Any], None],
         influence_analysis_config: Union[str, dict[str, Any], None],
+        # File dumping parameter
+        space_wait_timeout: int = 36000,
+        reserve_free_pct: float = 5.0,
     ) -> None:
         self.__name__ = model_label
         self.model_label = model_label
@@ -1324,6 +1472,8 @@ class _ModelMethod:
         self.residual_config = residual_config
         self.residual_plot_config = residual_plot_config
         self.influence_analysis_config = influence_analysis_config
+        self.space_wait_timeout = space_wait_timeout
+        self.reserve_free_pct = reserve_free_pct
 
     # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
     @simple_type_validator
@@ -1372,6 +1522,8 @@ class _ModelMethod:
             unseen_threshold=self.unseen_threshold,
             result_backup=self.result_backup,
             silent_all=silent_all,
+            space_wait_timeout=self.space_wait_timeout,
+            reserve_free_pct=self.reserve_free_pct,
         )
         if self.is_regression:
             model_eva.regressor_evaluation(
@@ -1422,11 +1574,14 @@ def _model_evaluator(  # noqa: C901
     lock: object = _DummyLock(),
     # Update progress status, use in a processing loop for resume
     update_progress_log: bool = False,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Import applied functions and modules
     _dl_val: Callable = _dl_val,
     unc_path: Callable = unc_path,
-    load_vars: Callable = load_vars,
-    dump_vars: Callable = dump_vars,
+    load_dill: Callable = load_dill,
+    dump_dill: Callable = dump_dill,
     _target_type_validation_for_serialization: Callable = _target_type_validation_for_serialization,
     modeleva: type = ModelEva,
     silent_all: bool = False,
@@ -1548,7 +1703,7 @@ def _model_evaluator(  # noqa: C901
     assert hasattr(lock, "__enter__") and hasattr(lock, "__exit__")
     with lock:
         if os.path.exists(unc_path(log_path)):
-            modeling_progress_log = load_vars(log_path)["modeling_progress_log"]
+            modeling_progress_log = load_dill(log_path)["modeling_progress_log"]
             if preprocess_chain not in modeling_progress_log:
                 modeling_progress_log.append(preprocess_chain)
             else:
@@ -1557,9 +1712,27 @@ def _model_evaluator(  # noqa: C901
                     UserWarning,
                     stacklevel=3,
                 )
-            dump_vars(log_path, {"modeling_progress_log": modeling_progress_log}, backup=False)
+            # TODO: dump_dill({"modeling_progress_log": modeling_progress_log}, log_path, backup=False)
+            dump_dill(
+                {"modeling_progress_log": modeling_progress_log},
+                target_file_path=unc_path(log_path),
+                backup=False,
+                space_wait_timeout=space_wait_timeout,
+                reserve_free_pct=reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
         else:
-            dump_vars(log_path, {"modeling_progress_log": [preprocess_chain]}, backup=False)
+            # TODO: dump_dill({"modeling_progress_log": [preprocess_chain]}, log_path, backup=False)
+            dump_dill(
+                {"modeling_progress_log": [preprocess_chain]},
+                target_file_path=unc_path(log_path),
+                backup=False,
+                space_wait_timeout=space_wait_timeout,
+                reserve_free_pct=reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
 
 @simple_type_validator
@@ -1572,12 +1745,15 @@ def _model_evaluator_mp(
     lock: object = _DummyLock(),
     # Update progress status, use in a processing loop for resume
     update_progress_log: bool = False,
+    # File dumping parameter
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
     # Import applied functions and modules
     _model_evaluator: Callable = _model_evaluator,
     _dl_val: Callable = _dl_val,
     unc_path: Callable = unc_path,
-    load_vars: Callable = load_vars,
-    dump_vars: Callable = dump_vars,
+    load_dill: Callable = load_dill,
+    dump_dill: Callable = dump_dill,
     _target_type_validation_for_serialization: Callable = _target_type_validation_for_serialization,
     modeleva: type = ModelEva,
     silent_all: bool = True,
@@ -1593,7 +1769,7 @@ def _model_evaluator_mp(
         from datetime import datetime
 
         # Load chain data
-        pc_it = load_vars(cdp)
+        pc_it = load_dill(cdp)
         pc_sample_list = pc_it["chain_res"]
         pc_sample_list = _target_type_validation_for_serialization(pc_sample_list)
         pchain = pc_it["chain_procs"]
@@ -1610,8 +1786,8 @@ def _model_evaluator_mp(
             update_progress_log=update_progress_log,
             # Import applied functions
             _dl_val=_dl_val,
-            load_vars=load_vars,
-            dump_vars=dump_vars,
+            load_dill=load_dill,
+            dump_dill=dump_dill,
             modeleva=modeleva,
             silent_all=silent_all,
         )

@@ -12,24 +12,24 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 # 1. Data preparation
 # Set data directory path
 import os
-# import shutil
+import shutil
 
 # Setup a directory for demo
 demo_dir = os.getcwd() + "/SpecPipeDemoDataAugmentation/"
 
-# if os.path.exists(demo_dir):
-#     shutil.rmtree(demo_dir)
+if os.path.exists(demo_dir):
+    shutil.rmtree(demo_dir)
 
 # Setup data directory and demo data
 data_dir = demo_dir + "demo_data/"
 
-# os.makedirs(data_dir)
+os.makedirs(data_dir)
 
 # Download real-world demo raster image and ROI files
 # Demo data URL: https://github.com/siwei66/swectral/tree/master/demo/demo_data/
-# from swectral import download_demo_data
+from swectral import download_demo_data
 
-# download_demo_data(data_dir)
+download_demo_data(data_dir)
 
 # Create a directory for pipeline results
 report_dir = demo_dir
@@ -59,7 +59,6 @@ exp.add_images_by_name("demo.", data_dir, "group_2")
 exp.add_rois_by_suffix(roi_filename_suffix="_[12].xml", search_directory=data_dir, group="group_1")
 exp.add_rois_by_suffix("_[345].xml", data_dir, "group_2")
 
-
 # 2.5. Sample labels and target values
 
 # 2.5.1 Set sample labels
@@ -67,7 +66,7 @@ exp.add_rois_by_suffix("_[345].xml", data_dir, "group_2")
 # Retrieve original sample label dataframe
 labels = exp.ls_labels()
 
-# Update sample labels using sample ROI names
+# Update sample labels using sample ROI names ("Plant number"-"leaf number")
 labels.iloc[:, 1] = exp.ls_rois_sample(return_dataframe=True, print_result=False)["ROI_name"]  # type: ignore
 
 # Set sample labels using the updated label dataframe
@@ -81,17 +80,27 @@ exp.ls_labels()["Label"]
 # List target value dataframe
 targets = exp.ls_sample_targets()
 
-# Set the leaf sequence number as target values
-targets["Target_value"] = [(5 - int(labl[0])) for labl in targets['Label']]  # type: ignore
+# Set the "new" or "old" leaf as target values
+target_values = []
+for labl in targets["Label"]:
+    if int(labl[0]) > 2:
+        target_values.append("new")
+    else:
+        target_values.append("old")
+targets["Target_value"] = target_values  # type: ignore
 
-# Set the ROIs within the same leaf to a validation group to prevent data leakage
-targets["Validation_group"] = [f"leaf_{labl[0]}" for labl in targets['Label']]
+# Put the ROIs of the same leaf in a validation group to prevent data leakage
+targets["Validation_group"] = [f"leaf_{labl[0]}" for labl in targets["Label"]]
 
 # Update target information using the modified target dataframe
 exp.sample_targets_from_df(targets)
 
 # Check target values
 exp.ls_targets()[["Label", "Target_value", "Validation_group"]]
+
+# Data augmentation by ROI resampling ====================== Data augmention choice 1, ROI stage =======================
+# If applied, the step must be implemented after completing SpecExp instance configuration
+exp.roi_subset_augmentation(n_sub=1, resolution=2, coverage_ratio=0.3)
 
 
 # 3. Design testing pipeline -------------------------------------------------------------------------------------------
@@ -117,36 +126,45 @@ def raw(v):  # type: ignore
 # Import some ROI spectral statistic metrics
 from swectral import roi_mean, roi_median
 
-# 3.4 Sample validation group-level data augmentation
+# 3.4 Sample-validation-group-level data augmentation ========== Data augmention choice 2, Sample data stage ===========
 from swectral import blend_samples
 
-blend = blend_samples(n_samples=25, is_regression=True)
+blend = blend_samples(n_samples=25, is_regression=False)
 
 # 3.5 Add models to the pipeline
+
+# Oversampling - trainable data augmentation algorithms =========== Data augmention choice 3, Modeling stage ===========
+# Modeling stage methods are all applied after data splitting to prevent data leakage
+from imblearn.over_sampling import SMOTE
+from swectral import IdentityResampler
+smote = SMOTE(k_neighbors=1)
+no_smote = IdentityResampler()
+
 # Fittable feature engineering models
 from sklearn.preprocessing import StandardScaler
-from sklearn.feature_selection import SelectKBest, f_regression  # type: ignore
+from sklearn.feature_selection import SelectKBest, f_classif
 from swectral.modelconnector import IdentityTransformer
 
-selector1 = SelectKBest(f_regression, k=7)  # Select 7 of 46 features
-selector2 = IdentityTransformer()
+selector1 = SelectKBest(f_classif, k=7)  # Select 7 of 46 features
+selector2 = IdentityTransformer()  # For passthrough (no selection)
 
 # Add regressors to the pipeline
-from sklearn.ensemble import RandomForestRegressor  # type: ignore
-from sklearn.neighbors import KNeighborsRegressor  # type: ignore
+from sklearn.ensemble import RandomForestClassifier  # type: ignore
+from sklearn.neighbors import KNeighborsClassifier  # type: ignore
 
-knn = KNeighborsRegressor(n_neighbors=3)
-rf = RandomForestRegressor(n_estimators=10)
-
-# Compose transformers and estimators to full factorial chains
-from swectral import factorial_transformer_chains
+rf = RandomForestClassifier(n_estimators=10)
+knn = KNeighborsClassifier(n_neighbors=3)
 
 # Compose transformers and estimators to full factorial chains
-models = factorial_transformer_chains(
+from swectral import factorial_model_chains
+
+# Compose transformers and estimators to full factorial chains
+models = factorial_model_chains(
+    {'smote': smote, 'no_smote': no_smote},
     [StandardScaler()],
-    {'feat5': selector1, 'feat_all': selector2},  # Specify custom model labels in dictionary
+    {'feat7': selector1, 'feat_all': selector2},  # Specify custom model labels in dictionary
     estimators=[knn, rf],
-    is_regression=True
+    is_regression=False,
 )
 
 # Build pipelines
@@ -169,12 +187,10 @@ pipe.build_pipeline(
 # 4 Run pipeline
 
 # Run pipeline
-pipe.run(model_test_coverage=0.01, assembly_test_coverage=0.01)
-
-# Enable resume after interruption
-# pipe.run(resume=True)
-# If the implementation is interrupted or forcibly terminated,
-# running the pipeline again with `resume=True` to continue from last completed step.
+# SMOTE requires a minimum number of sample neighbors,
+# which causes model testing failure due to the very small test sample size
+# Set `test_model=False` to skip model testing for modeling with SMOTE.
+pipe.run(test_model=False)
 
 
 # %% -------------------------------------------------------------------------------------------------------------------
@@ -187,8 +203,8 @@ chain_results = pipe.report_chains()
 
 # Check summary reports
 result_summary.keys()
-result_summary['Performance_summary'].columns
+result_summary['Macro_avg_performance_summary'].columns
 
 # Check processing chain reports
 chain_results[0].keys()
-chain_results[0]['Scatter_plot']
+chain_results[0]['ROC_curve']

@@ -21,10 +21,10 @@ import warnings
 # Test
 import pytest
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 # Typing
-from typing import Annotated, Any, Callable, Optional, Union, Literal
+from typing import Annotated, Any, Callable, Optional, Union, Literal, NamedTuple
 from pydantic import BaseModel
 
 # Basic data
@@ -44,9 +44,9 @@ from swectral.specio import (
     df_from_csv,
     df_to_csv,
     dict_value_validator,
-    dump_vars,
+    dump_dill,
     envi_roi_coords,
-    load_vars,
+    load_dill,
     names_filter,
     roi_to_envi,
     roi_to_shp,
@@ -2194,20 +2194,20 @@ class TestShpROICoords:
 # TestShpROICoords.teardown_method()
 
 
-# %% test functions : dump_vars
+# %% test functions : dump_dill
 
 
 class TestDumpVars(unittest.TestCase):
     @staticmethod
     def test_with_backup() -> None:
-        """Test dump_vars with backup=True"""
+        """Test dump_dill with backup=True"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test file path
             test_file = Path(temp_dir) / "test_file.txt"
             test_vars = {"var1": "value1", "var2": 42, "var3": [1, 2, 3]}
 
             # Call the function
-            dump_vars(str(test_file), test_vars, backup=True)
+            dump_dill(test_vars, str(test_file), backup=True)
 
             # Check that main file was created
             main_file = Path(temp_dir) / "test_file.dill"
@@ -2229,14 +2229,14 @@ class TestDumpVars(unittest.TestCase):
 
     @staticmethod
     def test_without_backup() -> None:
-        """Test dump_vars with backup=False"""
+        """Test dump_dill with backup=False"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test file path
             test_file = Path(temp_dir) / "test_file.txt"
             test_vars = {"test_var": "test_value", "number": 123}
 
             # Call the function
-            dump_vars(str(test_file), test_vars, backup=False)
+            dump_dill(test_vars, str(test_file), backup=False)
 
             # Check that main file was created
             main_file = Path(temp_dir) / "test_file.dill"
@@ -2253,14 +2253,14 @@ class TestDumpVars(unittest.TestCase):
 
     @staticmethod
     def test_default_backup() -> None:
-        """Test dump_vars with default backup parameter (should be True)"""
+        """Test dump_dill with default backup parameter (should be True)"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test file path
             test_file = Path(temp_dir) / "test_file.txt"
             test_vars = {"default_test": True}
 
             # Call the function without specifying backup
-            dump_vars(str(test_file), test_vars)
+            dump_dill(test_vars, str(test_file))
 
             # Check that both main and backup files were created (default backup=True)
             main_file = Path(temp_dir) / "test_file.dill"
@@ -2271,14 +2271,14 @@ class TestDumpVars(unittest.TestCase):
 
     @staticmethod
     def test_already_dill_extension() -> None:
-        """Test dump_vars with .dill extension already in filename"""
+        """Test dump_dill with .dill extension already in filename"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test file path with .dill extension
             test_file = Path(temp_dir) / "test_file.dill"
             test_vars = {"extension_test": "dill"}
 
             # Call the function
-            dump_vars(str(test_file), test_vars, backup=False)
+            dump_dill(test_vars, str(test_file), backup=False)
 
             # Check that file was created with same name (no double .dill)
             assert test_file.exists(), "File should be created with original .dill extension"
@@ -2290,14 +2290,14 @@ class TestDumpVars(unittest.TestCase):
 
     @staticmethod
     def test_no_extension() -> None:
-        """Test dump_vars with filename without extension"""
+        """Test dump_dill with filename without extension"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test file path without extension
             test_file = Path(temp_dir) / "test_file"
             test_vars = {"no_extension": "test"}
 
             # Call the function
-            dump_vars(str(test_file), test_vars, backup=False)
+            dump_dill(test_vars, str(test_file), backup=False)
 
             # Check that .dill extension was added
             dill_file = Path(temp_dir) / "test_file.dill"
@@ -2310,7 +2310,7 @@ class TestDumpVars(unittest.TestCase):
 
     @staticmethod
     def test_complex_data_structures() -> None:
-        """Test dump_vars with complex data structures"""
+        """Test dump_dill with complex data structures"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test file path
             test_file = Path(temp_dir) / "complex_test.txt"
@@ -2328,7 +2328,7 @@ class TestDumpVars(unittest.TestCase):
             }
 
             # Call the function
-            dump_vars(str(test_file), test_vars, backup=False)
+            dump_dill(test_vars, str(test_file), backup=False)
 
             # Check that file was created
             main_file = Path(temp_dir) / "complex_test.dill"
@@ -2341,14 +2341,14 @@ class TestDumpVars(unittest.TestCase):
 
     @staticmethod
     def test_empty_dict() -> None:
-        """Test dump_vars with empty dictionary"""
+        """Test dump_dill with empty dictionary"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test file path
             test_file = Path(temp_dir) / "empty_test.txt"
             test_vars: dict = {}
 
             # Call the function
-            dump_vars(str(test_file), test_vars, backup=False)
+            dump_dill(test_vars, str(test_file), backup=False)
 
             # Check that file was created
             main_file = Path(temp_dir) / "empty_test.dill"
@@ -2360,7 +2360,7 @@ class TestDumpVars(unittest.TestCase):
             assert loaded_vars == test_vars, "Empty dict should be preserved"
 
 
-# %% Test - dump_vars
+# %% Test - dump_dill
 
 # TestDumpVars.test_with_backup()
 # TestDumpVars.test_without_backup()
@@ -2373,7 +2373,7 @@ class TestDumpVars(unittest.TestCase):
 # TestDumpVars.test_empty_dict()
 
 
-# %% test functions : load_vars
+# %% test functions : load_dill
 
 
 class TestLoadVars(unittest.TestCase):
@@ -2395,7 +2395,7 @@ class TestLoadVars(unittest.TestCase):
                 dill.dump(test_data, f)
 
             # Test the function
-            result = load_vars(temp_path)
+            result = load_dill(temp_path)
 
             # Verify the result
             assert result == test_data
@@ -2414,7 +2414,7 @@ class TestLoadVars(unittest.TestCase):
             temp_file.write(b"test content")
 
             with pytest.raises(ValueError, match="must be a 'dill' file"):
-                load_vars(temp_path)
+                load_dill(temp_path)
 
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -2424,8 +2424,8 @@ class TestLoadVars(unittest.TestCase):
         """Test that ValueError is raised for non-existent files."""
         non_existent_path = "/non/existent/path/file.dill"
 
-        with pytest.raises(ValueError, match="path does not exist"):
-            load_vars(non_existent_path)
+        with pytest.raises(ValueError, match="not exist"):
+            load_dill(non_existent_path)
 
     @staticmethod
     def test_corrupted_file() -> None:
@@ -2436,7 +2436,7 @@ class TestLoadVars(unittest.TestCase):
             temp_file.write(b"invalid dill content")
 
             with pytest.raises((dill.UnpicklingError, EOFError)):
-                load_vars(temp_path)
+                load_dill(temp_path)
 
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -2449,7 +2449,7 @@ class TestLoadVars(unittest.TestCase):
             # Leave file empty
 
             with pytest.raises((dill.UnpicklingError, EOFError)):
-                load_vars(temp_path)
+                load_dill(temp_path)
 
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -2470,7 +2470,7 @@ class TestLoadVars(unittest.TestCase):
             with open(temp_path, "wb") as f:
                 dill.dump(test_data, f)
 
-            result = load_vars(temp_path)
+            result = load_dill(temp_path)
 
             assert result["none_val"] is None
             assert result["bool_val"] is True
@@ -2502,7 +2502,7 @@ class TestLoadVars(unittest.TestCase):
             with open(temp_path, "wb") as f:
                 dill.dump(test_data, f)
 
-            result = load_vars(temp_path)
+            result = load_dill(temp_path)
 
             # Test the loaded function
             assert result["function"](5) == 10
@@ -2518,7 +2518,7 @@ class TestLoadVars(unittest.TestCase):
             os.remove(temp_path)
 
 
-# %% Test - load_vars
+# %% Test - load_dill
 
 # TestLoadVars.test_success()
 
@@ -2536,6 +2536,14 @@ class TestLoadVars(unittest.TestCase):
 
 
 class TestDfToCsv(unittest.TestCase):
+
+    class DiskUsage(NamedTuple):
+        """For mock disk usage."""
+
+        total: int
+        used: int
+        free: int
+
     @staticmethod
     def create_test_dataframe(rows: int = 100, cols: int = 5) -> pd.DataFrame:
         """Create a test DataFrame"""
@@ -2548,7 +2556,7 @@ class TestDfToCsv(unittest.TestCase):
             test_df = TestDfToCsv.create_test_dataframe(10, 3)
             output_path = os.path.join(temp_dir, "test.csv")
 
-            result = df_to_csv(test_df, output_path, compression_format="infer")
+            result = df_to_csv(test_df, output_path, compression_format="infer", return_path=True)
 
             assert unc_path(result) == unc_path(output_path)
             assert os.path.exists(output_path)
@@ -2566,7 +2574,7 @@ class TestDfToCsv(unittest.TestCase):
             test_df = TestDfToCsv.create_test_dataframe(100, 5)
             output_path = os.path.join(temp_dir, "test.csv")
 
-            result = df_to_csv(test_df, output_path, compression_format="zstd")
+            result = df_to_csv(test_df, output_path, compression_format="zstd", return_path=True)
 
             assert unc_path(result) == unc_path(output_path)
             assert os.path.exists(output_path)
@@ -2584,7 +2592,9 @@ class TestDfToCsv(unittest.TestCase):
             test_df = TestDfToCsv.create_test_dataframe(10000, 50)
             output_path = os.path.join(temp_dir, "test.csv")
 
-            result = df_to_csv(test_df, output_path, compress_nvalue_threshold=1000, compression_format="zstd")
+            result = df_to_csv(
+                test_df, output_path, compress_nvalue_threshold=1000, compression_format="zstd", return_path=True
+            )
 
             expected_path = output_path + ".zst"
             assert unc_path(result) == unc_path(expected_path)
@@ -2602,7 +2612,9 @@ class TestDfToCsv(unittest.TestCase):
                 test_df = TestDfToCsv.create_test_dataframe(10000, 20)
                 output_path = os.path.join(temp_dir, "test.csv")
 
-                result = df_to_csv(test_df, output_path, compress_nvalue_threshold=1000, compression_format=fmt)
+                result = df_to_csv(
+                    test_df, output_path, compress_nvalue_threshold=1000, compression_format=fmt, return_path=True
+                )
 
                 expected_path = output_path + ext
                 assert unc_path(result) == unc_path(expected_path)
@@ -2623,7 +2635,7 @@ class TestDfToCsv(unittest.TestCase):
                 df_to_csv(test_df, output_path, overwrite=False)
 
             # Should not raise error when overwrite=True (default)
-            result = df_to_csv(test_df, output_path, overwrite=True)
+            result = df_to_csv(test_df, output_path, overwrite=True, return_path=True)
             assert unc_path(result) == unc_path(output_path)
             # File should be overwritten (size might be different)
             assert os.path.exists(output_path)
@@ -2668,7 +2680,7 @@ class TestDfToCsv(unittest.TestCase):
             output_path = os.path.join(temp_dir, "test.csv")
 
             # Test with custom separator and no header
-            result = df_to_csv(test_df, output_path, sep="|", header=False, index=True)
+            result = df_to_csv(test_df, output_path, sep="|", header=False, index=True, return_path=True)
 
             assert unc_path(result) == unc_path(output_path)
             assert os.path.exists(output_path)
@@ -2691,7 +2703,9 @@ class TestDfToCsv(unittest.TestCase):
 
             # Test with .csv.gz path and matching compression format
             output_path = os.path.join(temp_dir, "test.csv.gz")
-            result = df_to_csv(test_df, output_path, compress_nvalue_threshold=1000, compression_format="gzip")
+            result = df_to_csv(
+                test_df, output_path, compress_nvalue_threshold=1000, compression_format="gzip", return_path=True
+            )
 
             assert unc_path(result) == unc_path(output_path)
             assert os.path.exists(output_path)
@@ -2704,14 +2718,18 @@ class TestDfToCsv(unittest.TestCase):
 
             # With low threshold, should compress
             output_path1 = os.path.join(temp_dir, "test1.csv")
-            result1 = df_to_csv(test_df, output_path1, compress_nvalue_threshold=1000, compression_format="zstd")
+            result1 = df_to_csv(
+                test_df, output_path1, compress_nvalue_threshold=1000, compression_format="zstd", return_path=True
+            )
             assert type(result1) is str
             assert result1.endswith(".zst")
             assert os.path.exists(result1)
 
             # With high threshold, should not compress
             output_path2 = os.path.join(temp_dir, "test2.csv")
-            result2 = df_to_csv(test_df, output_path2, compress_nvalue_threshold=1000000, compression_format="zstd")
+            result2 = df_to_csv(
+                test_df, output_path2, compress_nvalue_threshold=1000000, compression_format="zstd", return_path=True
+            )
             assert unc_path(result2) == unc_path(output_path2)
             assert result2 is not None
             assert isinstance(result2, str)
@@ -2747,13 +2765,64 @@ class TestDfToCsv(unittest.TestCase):
             specified_path = os.path.join(temp_dir, "consistent_test.csv")
 
             # Call multiple times with same parameters
-            result1 = df_to_csv(test_df, specified_path, compression_format="infer")
-            result2 = df_to_csv(test_df, specified_path, compression_format="infer", overwrite=True)
+            result1 = df_to_csv(test_df, specified_path, compression_format="infer", return_path=True)
+            result2 = df_to_csv(test_df, specified_path, compression_format="infer", overwrite=True, return_path=True)
 
             # Validate both calls return the same path
             assert unc_path(result1) == unc_path(specified_path)
             assert unc_path(result2) == unc_path(specified_path)
             assert unc_path(result1) == unc_path(result2)
+
+    @staticmethod
+    @patch('time.sleep', return_value=None)
+    @patch('shutil.disk_usage')
+    def test_disk_full_timeout_raises_error(mock_disk: MagicMock, mock_sleep: MagicMock) -> None:
+        """Test that df_to_csv raises a specific error when disk remains full."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            test_df = TestDfToCsv.create_test_dataframe(10, 3)
+            test_path = os.path.join(temp_dir, "critical_data.csv")
+
+            # Disk 1% free (Total 100, Free 1)
+            mock_disk.return_value = TestDfToCsv.DiskUsage(total=100, used=99, free=1)
+
+            with pytest.raises(Exception, match="Disk space validation failed"):
+                df_to_csv(
+                    dataframe=test_df,
+                    csv_path=test_path,
+                    space_wait_timeout=1,  # Force quick timeout
+                    reserve_free_pct=10.0,
+                    min_sec_random_wait=0.1,
+                    max_sec_random_wait=0.1,
+                )
+
+    @staticmethod
+    @patch('time.sleep', return_value=None)
+    @patch('shutil.disk_usage')
+    def test_disk_clears_and_completes(mock_disk: MagicMock, mock_sleep: MagicMock) -> None:
+        """Test that the function waits and then succeeds when space is freed."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            test_df = TestDfToCsv.create_test_dataframe(10, 3)
+            test_path = os.path.join(temp_dir, "critical_data.csv")
+
+            # Disk Usage: [Full, Full, Space Available]
+            GB = 1024**3  # noqa: N806
+            mock_disk.side_effect = [
+                TestDfToCsv.DiskUsage(100 * GB, 99 * GB, 1 * GB),
+                TestDfToCsv.DiskUsage(100 * GB, 99 * GB, 1 * GB),
+                TestDfToCsv.DiskUsage(100 * GB, 80 * GB, 20 * GB),
+            ]
+
+            # 2. Execute
+            df_to_csv(dataframe=test_df, csv_path=test_path, reserve_free_pct=5.0, return_path=True)
+
+            # 3. Assertions (Silent validation)
+            assert mock_disk.call_count == 3
+            assert mock_sleep.call_count == 2
+            assert os.path.exists(test_path)
+
+            # Integrity check: Read it back to ensure it wasn't corrupted
+            loaded_df = pd.read_csv(test_path)
+            assert loaded_df.shape == (10, 3)
 
 
 # %% Test - df_to_csv

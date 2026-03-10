@@ -48,7 +48,7 @@ dependencies = [
     "pyproj>=3.5.0",
     "shapely>=2.0.1",
     "zstandard>=0.23.0",
-    "PyWavelets>=1.6.0"
+    "PyWavelets>=1.6.0",
 ]
 
 [project.urls]
@@ -67,7 +67,8 @@ dev = [
 ]
 test = [
     "pytest>=8.4.1",
-    "pytest-cov>=7.0.0"
+    "pytest-cov>=7.0.0",
+    # "imbalanced-learn>=0.12.4",  # Version lag of sklearn that causing FutureWarnings
 ]
 docs = [
     "sphinx>=7.4.7",

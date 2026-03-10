@@ -19,15 +19,19 @@ import numpy as np
 # Typing
 from typing import Optional, Any
 
-# File
-import dill
-
 # Statistics
 from scipy.stats import mannwhitneyu
 
 # Local
 from .roistats import Stats2d
-from .specio import RealNumber, simple_type_validator, unc_path
+from .specio import (
+    RealNumber,
+    simple_type_validator,
+    unc_path,
+    dump_dill,
+    df_to_csv,
+    df_from_csv,
+)
 
 # Progress
 from tqdm import tqdm
@@ -43,6 +47,9 @@ def chain_sample_group_stats(  # noqa: C901
     sample_target_path: str,
     output_directory: str,
     is_regression: Optional[bool] = None,
+    *,
+    _space_wait_timeout: int = 36000,
+    _reserve_free_pct: float = 5.0,
 ) -> None:
     """
     Compute sample X and y overall and group statistics and save to CSV files of specified preprocessing chain.
@@ -77,7 +84,8 @@ def chain_sample_group_stats(  # noqa: C901
     write_dir = output_directory
 
     # Read preprocessed data
-    df_preprocessed = pd.read_csv(unc_path(sample_data_path), header=0).iloc[:, 1:]
+    # TODO: df_preprocessed = pd.read_csv(unc_path(sample_data_path), header=0).iloc[:, 1:]
+    df_preprocessed = df_from_csv(csv_path=unc_path(sample_data_path), header=0).iloc[:, 1:]
     # Validate columns
     if len(df_preprocessed.columns) > 7:
         if list(df_preprocessed.columns)[0:7] == [
@@ -96,7 +104,8 @@ def chain_sample_group_stats(  # noqa: C901
         raise ValueError(f"Invalid sample data columns: {df_preprocessed.columns}")
 
     # Read sample groups
-    df_sample_targets = pd.read_csv(unc_path(sample_target_path))
+    # TODO: df_sample_targets = pd.read_csv(unc_path(sample_target_path))
+    df_sample_targets = df_from_csv(csv_path=unc_path(sample_target_path))
     # Validate columns
     if list(df_sample_targets.columns) == [
         "Sample_ID",
@@ -192,22 +201,56 @@ def chain_sample_group_stats(  # noqa: C901
 
         # Save results
         # Save target stats
-        df_ystats.to_csv(
-            unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_y_stats.csv"),
+        # TODO: changed
+        # df_ystats.to_csv(
+        #     unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_y_stats.csv"),
+        #     index=False,
+        # )
+        df_to_csv(
+            dataframe=df_ystats,
+            csv_path=unc_path(
+                write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_y_stats.csv"
+            ),  # noqa: E501
             index=False,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
         )
         # Dump y stats dill (swectral private)
         dill_result_path = write_dir + ".__swectral_dill_data/.__swectral_result_summary_sample_targets_stats.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
 
-        with open(unc_path(dill_result_path), "wb") as f:
-            dill.dump(df_ystats, f)
+        # TODO: changed
+        # with open(unc_path(dill_result_path), "wb") as f:
+        #     dill.dump(df_ystats, f)
+        dump_dill(
+            df_ystats,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         # Save X stats
         for m in list(gstats.keys()):
             dfm = df_xstats_dict[m]
-            dfm.to_csv(
-                unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_X_{m}.csv"),
+            # TODO: changed
+            # dfm.to_csv(
+            #     unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_X_{m}.csv"),
+            #     index=False,
+            # )
+            df_to_csv(
+                dataframe=dfm,
+                csv_path=unc_path(
+                    write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_X_{m}.csv"
+                ),  # noqa: E501
                 index=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
     # Categorical targets - classification
@@ -254,22 +297,56 @@ def chain_sample_group_stats(  # noqa: C901
 
         # Save results
         # Save target stats
-        df_ystats.to_csv(
-            unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_y_stats.csv"),
+        # TODO: changed
+        # df_ystats.to_csv(
+        #     unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_y_stats.csv"),
+        #     index=False,
+        # )
+        df_to_csv(
+            dataframe=df_ystats,
+            csv_path=unc_path(
+                write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_y_stats.csv"
+            ),  # noqa: E501
             index=False,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
         )
         # Dump y stats dill (swectral private)
         dill_result_path = write_dir + ".__swectral_dill_data/.__swectral_result_summary_sample_targets_stats.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        with open(unc_path(dill_result_path), "wb") as f:
-            dill.dump(df_ystats, f)
+        # TODO: changed
+        # with open(unc_path(dill_result_path), "wb") as f:
+        #     dill.dump(df_ystats, f)
+        dump_dill(
+            df_ystats,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
 
         # Save X stats
         for m in list(gstats_x.keys()):
             dfm = df_xstats_dict[m]
-            dfm.to_csv(
-                unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_X_{m}.csv"),
+            # TODO: changed
+            # dfm.to_csv(
+            #     unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_X_{m}.csv"),
+            #     index=False,
+            # )
+            df_to_csv(
+                dataframe=dfm,
+                csv_path=unc_path(
+                    write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_X_{m}.csv"
+                ),  # noqa: E501
                 index=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
 
 
@@ -281,6 +358,9 @@ def sample_group_stats(  # noqa: C901
     report_directory: str,
     output_directory: str = "",
     is_regression: Optional[bool] = None,
+    *,
+    _space_wait_timeout: int = 36000,
+    _reserve_free_pct: float = 5.0,
 ) -> None:
     """
     Compute the descriptive statistical metrics of the preprocessed sample data and the target values.
@@ -338,6 +418,8 @@ def sample_group_stats(  # noqa: C901
             sample_target_path=sample_target_path,
             output_directory=output_directory,
             is_regression=is_regression,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
         )
 
     # Add y stats to modeling targets dir
@@ -355,6 +437,7 @@ def process_id_to_label(process_id: str, process_config_df: pd.DataFrame, ignore
     Convert unique SpecPipe process ID to process label. If ignore True, return input if input is not id.
     "process_config_df" is the SpecPipe_added_process.csv in the configuration subdir.
     """
+    # Old version for df_proc -> removed preventing repeating read
     # config_dir = (pipeline_config_dir + "/").replace("//", "/")
     # df_proc = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
     df_proc = process_config_df
@@ -388,7 +471,9 @@ def process_label_to_id(process_label: str, process_config_df: pd.DataFrame) -> 
                 return process_label
         except Exception:
             pass
+
     # Convert label to ID
+    # Old version for df_proc -> removed preventing repeating read
     # config_dir = (pipeline_config_dir + "/").replace("//", "/")
     # df_proc = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
     df_proc = process_config_df
@@ -410,6 +495,9 @@ def process_label_to_id(process_label: str, process_config_df: pd.DataFrame) -> 
 def performance_metrics_summary(  # noqa: C901
     pipeline_config_dir: str,
     model_evaluation_report_dir: str,
+    *,
+    _space_wait_timeout: int = 36000,
+    _reserve_free_pct: float = 5.0,
 ) -> dict[str, Any]:
     """
     Collect performance metrics from SpecPipe model evaluation reports.
@@ -438,7 +526,8 @@ def performance_metrics_summary(  # noqa: C901
 
     config_dir = (pipeline_config_dir.replace("\\", "/") + "/").replace("//", "/")
     report_dir = (model_evaluation_report_dir.replace("\\", "/") + "/").replace("//", "/")
-    process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Chains path
     chains_id_path = config_dir + "SpecPipe_exec_chains_in_ID.csv"
@@ -451,8 +540,10 @@ def performance_metrics_summary(  # noqa: C901
         raise ValueError(f"Missing required file in given pipeline_config_dir: {chains_label_path}")
 
     # Chains
-    df_cid = pd.read_csv(unc_path(chains_id_path))
-    df_clab = pd.read_csv(unc_path(chains_label_path))
+    # TODO: df_cid = pd.read_csv(unc_path(chains_id_path))
+    df_cid = df_from_csv(csv_path=unc_path(chains_id_path))
+    # TODO: df_clab = pd.read_csv(unc_path(chains_label_path))
+    df_clab = df_from_csv(csv_path=unc_path(chains_label_path))
 
     # Validate results
     # Configuration chains
@@ -566,15 +657,26 @@ def performance_metrics_summary(  # noqa: C901
         # Dump dill (swectral private)
         dill_result_path = metrics_dir + ".__swectral_dill_data/.__swectral_core_result_Chain_process_info.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        with open(unc_path(dill_result_path), "wb") as f:
-            dill.dump(df_cprocs, f)
+        # TODO: changed
+        # with open(unc_path(dill_result_path), "wb") as f:
+        #     dill.dump(df_cprocs, f)
+        dump_dill(
+            df_cprocs,
+            target_file_path=unc_path(dill_result_path),
+            backup=False,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         # Read performance metrics
         metrics_filename = [
             entry.name
             for entry in os.scandir(unc_path(metrics_dir))
             if f"_performance_{dir_name.split('_Model_')[-1]}.csv" in entry.name
         ][0]
-        df_metrics = pd.read_csv(unc_path(f"{report_dir}{dir_name}/{metrics_filename}"))
+        # TODO: df_metrics = pd.read_csv(unc_path(f"{report_dir}{dir_name}/{metrics_filename}"))
+        df_metrics = df_from_csv(csv_path=unc_path(f"{report_dir}{dir_name}/{metrics_filename}"))
         if "Classification_performance_" in metrics_filename:
             # micro metrics
             micro_metrics = (
@@ -660,6 +762,9 @@ def regression_performance_marginal_stats(  # noqa: C901
     pipeline_config_dir: str,
     model_evaluation_report_dir: str,
     validate_process: bool = True,
+    *,
+    _space_wait_timeout: int = 36000,
+    _reserve_free_pct: float = 5.0,
 ) -> dict[str, Any]:
     """
     Compute marginal performance statistics using the result dictionary from function 'performance_metrics_summary'.
@@ -675,7 +780,8 @@ def regression_performance_marginal_stats(  # noqa: C901
     config_dir = pipeline_config_dir
 
     # Load config and create a lookup dictionary
-    process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Compute and output marginal perf stats of each step
     marginal_performance_stats: dict = {}
@@ -740,21 +846,59 @@ def regression_performance_marginal_stats(  # noqa: C901
 
         # Save step result
         if len(step_process_ids) > 1:
-            step_gstats_r2.to_csv(unc_path(report_dir + f"Marginal_R2_stats_{str(step).lower()}.csv"), index=False)
+            # TODO: step_gstats_r2.to_csv(unc_path(report_dir + f"Marginal_R2_stats_{str(step).lower()}.csv"), index=False)  # noqa: E501
+            df_to_csv(
+                dataframe=step_gstats_r2,
+                csv_path=unc_path(report_dir + f"Marginal_R2_stats_{str(step).lower()}.csv"),
+                index=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
             dill_result_path = (
                 report_dir
                 + f".__swectral_dill_data/.__swectral_result_summary_Marginal_R2_stats_{str(step).lower()}.dill"
             )
             os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-            with open(unc_path(dill_result_path), "wb") as f:
-                dill.dump(step_gstats_r2, f)
+            # TODO: changed
+            # with open(unc_path(dill_result_path), "wb") as f:
+            #     dill.dump(step_gstats_r2, f)
+            dump_dill(
+                step_gstats_r2,
+                target_file_path=unc_path(dill_result_path),
+                backup=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
     # Save summaries
-    df_reg_metrics.to_csv(unc_path(report_dir + "Performance_summary.csv"), index=False)
+    # TODO: df_reg_metrics.to_csv(unc_path(report_dir + "Performance_summary.csv"), index=False)
+    df_to_csv(
+        dataframe=df_reg_metrics,
+        csv_path=unc_path(report_dir + "Performance_summary.csv"),
+        index=False,
+        space_wait_timeout=_space_wait_timeout,
+        reserve_free_pct=_reserve_free_pct,
+        min_sec_random_wait=5.0,
+        max_sec_random_wait=5.0,
+    )
     dill_result_path = report_dir + ".__swectral_dill_data/.__swectral_result_summary_Performance_summary.dill"
     os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-    with open(unc_path(dill_result_path), "wb") as f:
-        dill.dump(df_reg_metrics, f)
+    # TODO: changed
+    # with open(unc_path(dill_result_path), "wb") as f:
+    #     dill.dump(df_reg_metrics, f)
+    dump_dill(
+        df_reg_metrics,
+        target_file_path=unc_path(dill_result_path),
+        backup=False,
+        space_wait_timeout=_space_wait_timeout,
+        reserve_free_pct=_reserve_free_pct,
+        min_sec_random_wait=5.0,
+        max_sec_random_wait=5.0,
+    )
 
     return marginal_performance_stats
 
@@ -764,6 +908,9 @@ def classification_performance_marginal_stats(  # noqa: C901
     pipeline_config_dir: str,
     model_evaluation_report_dir: str,
     validate_process: bool = True,
+    *,
+    _space_wait_timeout: int = 36000,
+    _reserve_free_pct: float = 5.0,
 ) -> dict[str, Any]:
     """
     Compute marginal performance statistics using the result dictionary from function 'performance_metrics_summary'.
@@ -779,7 +926,8 @@ def classification_performance_marginal_stats(  # noqa: C901
     config_dir = pipeline_config_dir
 
     # Load config and create a lookup dictionary
-    process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
+    process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Compute and output marginal perf stats of each step
     marginal_performance_stats: dict = {}
@@ -867,8 +1015,18 @@ def classification_performance_marginal_stats(  # noqa: C901
 
         if len(step_process_ids) > 1:
             # Macro
-            step_gstats_macauc.to_csv(
-                unc_path(report_dir + f"Marginal_macro_avg_AUC_stats_{str(step).lower()}.csv"), index=False
+            # TODO: changed
+            # step_gstats_macauc.to_csv(
+            #     unc_path(report_dir + f"Marginal_macro_avg_AUC_stats_{str(step).lower()}.csv"), index=False
+            # )
+            df_to_csv(
+                dataframe=step_gstats_macauc,
+                csv_path=unc_path(report_dir + f"Marginal_macro_avg_AUC_stats_{str(step).lower()}.csv"),
+                index=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
             dill_path = unc_path(
                 report_dir
@@ -876,38 +1034,93 @@ def classification_performance_marginal_stats(  # noqa: C901
                 + f".__swectral_result_summary_Marginal_macro_avg_AUC_stats_{str(step).lower()}.dill"
             )
             os.makedirs(os.path.dirname(dill_path), exist_ok=True)
-            with open(dill_path, "wb") as f:
-                dill.dump(step_gstats_macauc, f)
+            # TODO: changed
+            # with open(dill_path, "wb") as f:
+            #     dill.dump(step_gstats_macauc, f)
+            dump_dill(
+                step_gstats_macauc,
+                target_file_path=unc_path(dill_path),
+                backup=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
             # Micro
-            step_gstats_micauc.to_csv(
-                unc_path(report_dir + f"Marginal_micro_avg_AUC_stats_{str(step).lower()}.csv"),
+            # TODO: changed
+            # step_gstats_micauc.to_csv(
+            #     unc_path(report_dir + f"Marginal_micro_avg_AUC_stats_{str(step).lower()}.csv"),
+            #     index=False,
+            # )
+            df_to_csv(
+                dataframe=step_gstats_micauc,
+                csv_path=unc_path(report_dir + f"Marginal_micro_avg_AUC_stats_{str(step).lower()}.csv"),
                 index=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
             )
             dill_path = unc_path(
                 report_dir
                 + ".__swectral_dill_data/"
                 + f".__swectral_result_summary_Marginal_micro_avg_AUC_stats_{str(step).lower()}.dill"
             )
-            with open(dill_path, "wb") as f:
-                dill.dump(step_gstats_micauc, f)
+            # TODO: changed
+            # with open(dill_path, "wb") as f:
+            #     dill.dump(step_gstats_micauc, f)
+            dump_dill(
+                step_gstats_micauc,
+                target_file_path=unc_path(dill_path),
+                backup=False,
+                space_wait_timeout=_space_wait_timeout,
+                reserve_free_pct=_reserve_free_pct,
+                min_sec_random_wait=5.0,
+                max_sec_random_wait=5.0,
+            )
 
     # Save summaries
     marginal_performance_stats.update({"macro_summary": df_macro_metrics, "micro_summary": df_micro_metrics})
     for df_sum, prefix in [(df_macro_metrics, "Macro"), (df_micro_metrics, "Micro")]:
-        df_sum.to_csv(unc_path(report_dir + f"{prefix}_avg_performance_summary.csv"), index=False)
+        # TODO: df_sum.to_csv(unc_path(report_dir + f"{prefix}_avg_performance_summary.csv"), index=False)
+        df_to_csv(
+            dataframe=df_sum,
+            csv_path=unc_path(report_dir + f"{prefix}_avg_performance_summary.csv"),
+            index=False,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
         dill_path = unc_path(
             report_dir + f".__swectral_dill_data/.__swectral_result_summary_{prefix}_avg_performance_summary.dill"
         )
         os.makedirs(os.path.dirname(dill_path), exist_ok=True)
-        with open(dill_path, "wb") as f:
-            dill.dump(df_sum, f)
+        # TODO: changed
+        # with open(dill_path, "wb") as f:
+        #     dill.dump(df_sum, f)
+        dump_dill(
+            df_sum,
+            target_file_path=unc_path(dill_path),
+            backup=False,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+        )
 
     return marginal_performance_stats
 
 
 # Marginal performance statistics
 @simple_type_validator
-def performance_marginal_stats(report_directory: str, metrics_dict: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def performance_marginal_stats(
+    report_directory: str,
+    metrics_dict: Optional[dict[str, Any]] = None,
+    *,
+    _space_wait_timeout: int = 36000,
+    _reserve_free_pct: float = 5.0,
+) -> dict[str, Any]:
     """
     Compute marginal model performance statistics and summary of model performance metrics from SpecPipe model evaluation reports.
 
@@ -953,16 +1166,29 @@ def performance_marginal_stats(report_directory: str, metrics_dict: Optional[dic
 
     # Summarize performance
     if compute_metrics_dict:
-        metrics_dict = performance_metrics_summary(pipeline_config_dir, model_evaluation_report_dir)
+        metrics_dict = performance_metrics_summary(
+            pipeline_config_dir=pipeline_config_dir,
+            model_evaluation_report_dir=model_evaluation_report_dir,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
+        )
 
     # Compute stats
     assert metrics_dict is not None
     if metrics_dict["is_regression"]:
         marginal_performance_stats = regression_performance_marginal_stats(
-            metrics_dict, pipeline_config_dir, model_evaluation_report_dir
+            metrics_dict,
+            pipeline_config_dir,
+            model_evaluation_report_dir,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
         )
     else:
         marginal_performance_stats = classification_performance_marginal_stats(
-            metrics_dict, pipeline_config_dir, model_evaluation_report_dir
+            metrics_dict,
+            pipeline_config_dir,
+            model_evaluation_report_dir,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
         )
     return marginal_performance_stats

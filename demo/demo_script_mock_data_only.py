@@ -227,12 +227,12 @@ knn_regressor = KNeighborsRegressor(n_neighbors=3)
 svr = SVR()
 
 # Add model using add_process
-pipe.add_process("spec1d", "model", 1, linear_regressor, validation_method="10-fold")
-pipe.add_process(7, 9, 1, rf_regressor, validation_method="10-fold")
+pipe.add_process("spec1d", "model", 1, linear_regressor, validation_method="5-fold")
+pipe.add_process(7, 9, 1, rf_regressor, validation_method="5-fold")
 
 # Add model using add_model
-pipe.add_model(knn_regressor, validation_method="10-fold")
-pipe.add_model(svr, validation_method="10-fold")
+pipe.add_model(knn_regressor, validation_method="5-fold")
+pipe.add_model(svr, validation_method="5-fold")
 
 # Check added models
 pipe.ls_model()

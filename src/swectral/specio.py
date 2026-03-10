@@ -10,7 +10,12 @@ import os
 import sys
 import glob
 import fnmatch
-import dill
+
+# import dill
+import shutil
+
+# Random
+import random
 
 # I/O
 import io
@@ -34,7 +39,7 @@ from typing import (
     Protocol,
     runtime_checkable,
 )
-from pydantic import AfterValidator, validate_call
+from pydantic import validate_call
 
 # Time
 import time
@@ -78,6 +83,10 @@ def simple_type_validator(func: Callable) -> Callable:  # type: ignore[no-untype
             # Error msg in check_type
             err_msg = ""
 
+            # Handle Any type - should always pass
+            if expected_type is Any:
+                return True, err_msg
+
             # Early return for None values
             if value is None:
                 # Check if None is allowed (Optional[T] or Union[T, None])
@@ -85,10 +94,6 @@ def simple_type_validator(func: Callable) -> Callable:  # type: ignore[no-untype
                 if origin is Union and type(None) in get_args(expected_type):
                     return True, err_msg
                 return False, err_msg
-
-            # Handle Any type - should always pass
-            if expected_type is Any:
-                return True, err_msg
 
             # Handle special typing constructs
             origin = get_origin(expected_type)
@@ -979,50 +984,187 @@ def shp_roi_coords(roi_shp_path: str) -> list[dict[str, Any]]:
 # %% Write variables to dill file and load variables from dill file
 
 
-# Write variables to dill file
-@validate_call
-def dump_vars(target_file_path: str, var_dict: dict[str, Any], backup: bool = True) -> None:
+# Helper: get object size
+@simple_type_validator
+def _get_base_size(obj: Any) -> int:
+    """Helper: get object memory size"""
+    result: int
+
+    # If None
+    if obj is None:
+        result = 0
+        return result
+
+    # Labeled size check
+    # For rasters
+    elif isinstance(obj, dict) and "__specpipe_raster_meta_for_size_validation" in obj:
+        import numpy as np
+
+        d_size = np.dtype(obj['dtype']).itemsize
+        result = int(obj['width'] * obj['height'] * obj['count'] * d_size)
+
+    # Pandas
+    elif hasattr(obj, "memory_usage"):
+        try:
+            result = int(obj.memory_usage(deep=True).sum())
+        except Exception:
+            result = sys.getsizeof(obj)
+    # NumPy.NDArray
+    elif hasattr(obj, "nbytes"):
+        result = int(obj.nbytes)
+    # PyTorch.Tensor
+    elif hasattr(obj, "nelement") and hasattr(obj, "element_size"):
+        try:
+            result = int(obj.nelement() * obj.element_size())
+        except Exception:
+            result = sys.getsizeof(obj)
+
+    # Recursive check for containers
+    elif isinstance(obj, (dict, list, tuple)):
+        result = sum(_get_base_size(i) for i in (obj.values() if isinstance(obj, dict) else obj))
+
+    else:
+        result = sys.getsizeof(obj)
+
+    return result
+
+
+# TODO: new
+# Disk space check and wait disk space
+@simple_type_validator
+def _wait_for_free_space(
+    obj: Any,
+    path: str,
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
+    *,
+    min_sec_random_wait: float = 5.0,
+    max_sec_random_wait: float = 5.0,
+    obj_size_buffer_coeff: float = 1.1,
+) -> None:
     """
-    Dump variables to dill file.
+    Disk free space validator for output files.
+    Raises TimeoutError if space is not available within the timeout period.
+    """
+    start_time = time.time()
+    # Check the parent directory since the file might not exist yet
+    check_path = os.path.dirname(os.path.abspath(path))
+
+    # Object size
+    obj_size = int(_get_base_size(obj) * obj_size_buffer_coeff)
+
+    while True:
+        usage = shutil.disk_usage(check_path)
+        predict_free = max(0, usage.free - obj_size)
+        free_pct = (predict_free / usage.total) * 100
+
+        if free_pct >= reserve_free_pct:
+            return
+
+        elapsed = time.time() - start_time
+        if elapsed > space_wait_timeout:
+            raise OSError(
+                f"Disk space validation failed after {space_wait_timeout}s. "
+                f"Hit: {reserve_free_pct}%, Current: {free_pct:.2f}% on {check_path}"
+            )
+        # Randomize for multiprocessing
+        sleep_time = random.uniform(max(1.0, min_sec_random_wait), max(1.0, min_sec_random_wait, max_sec_random_wait))
+        time.sleep(sleep_time)
+
+
+# %% Dump and load python obj to dill file
+
+
+# TODO: changed
+# New dump vars with disk space validation and backup functionality
+@simple_type_validator
+def dump_dill(
+    obj: Any,
+    target_file_path: str,
+    backup: bool = True,
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
+    *,
+    min_sec_random_wait: float = 5.0,
+    max_sec_random_wait: float = 5.0,
+    obj_size_buffer_coeff: float = 1.1,
+) -> None:
+    """
+    Dump variables to dill file with backup and disk space validation.
+    The disk space validation estimates the size of the object to dump using (memory size * buffer coefficient) approach.
 
     Parameters
     ----------
-    file_path : str
+    obj : Any
+        Object to dump.
+    target_file_path : str
         Full path for the target output file.
+    backup : bool
+        Whether to create a timestamped backup file.
+    space_wait_timeout : int
+        Seconds to wait for space to clear before raising an Error.
+    reserve_free_pct : float
+        Reserved disk free percentage required to proceed.
+    min_sec_random_wait : float
+        Minimum seconds of random wait before dump.
+    max_sec_random_wait : float
+        Maximum seconds of random wait before dump.
+    """  # noqa: E501
+    # Dependencies for multiprocessing
+    import dill
 
-    var_dict : dict[str, Any]
-        Dictionary of the variables to save.
-        Set keys as the variable names and value as the corresponding variable values.
+    # Validate disk space before any I/O begins
+    _wait_for_free_space(
+        obj=obj,
+        path=target_file_path,
+        space_wait_timeout=space_wait_timeout,
+        reserve_free_pct=reserve_free_pct,
+        min_sec_random_wait=min_sec_random_wait,
+        max_sec_random_wait=max_sec_random_wait,
+        obj_size_buffer_coeff=obj_size_buffer_coeff,
+    )
 
-    Returns
-    -------
-    None.
-
-    """
-    # Validate extension
+    # Validate extension and setup paths
     target_file_path_base = os.path.splitext(target_file_path)[0]
     target_file_path1 = target_file_path_base + ".dill"
-
-    # Dill dump
-    temp_path = target_file_path_base + "_" + str(time.time_ns())[7:-2] + ".dill.tmp"
-    with open(unc_path(temp_path), "wb") as f:
-        dill.dump(var_dict, f)
     os.makedirs(os.path.dirname(target_file_path1), exist_ok=True)
-    os.replace(temp_path, target_file_path1)
+
+    # Dill dump to a temporary file for atomicity
+    pid = os.getpid()
+    timestamp = str(time.time_ns())[7:-2]
+    temp_path = f"{target_file_path_base}_{pid}{timestamp}.dill.tmp"
+
+    # Dump file
+    try:
+        with open(unc_path(temp_path), "wb") as f:
+            dill.dump(obj, f)
+        # os.replace is atomic, preventing partial file reads
+        os.replace(temp_path, target_file_path1)
+    except Exception as e:
+        # Cleanup temp file if the write failed
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise e
 
     # Dump backup file
     if backup:
-        # Path for backup
         cts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        target_file_path_b = os.path.splitext(target_file_path1)[0] + "_" + cts + ".dill"
-        # Dill dump
-        with open(unc_path(target_file_path_b), "wb") as f:
-            dill.dump(var_dict, f)
+        target_file_path_backup = target_file_path_base + "_" + cts + ".dill"
+        temp_path_backup = f"{target_file_path_backup}_{pid}{timestamp}.dill.tmp"
+        try:
+            with open(unc_path(temp_path_backup), "wb") as f:
+                dill.dump(obj, f)
+            os.replace(temp_path_backup, target_file_path_backup)
+        except Exception as e:
+            # Cleanup temp file if the write failed
+            if os.path.exists(temp_path_backup):
+                os.remove(temp_path_backup)
+            raise e
 
 
 # Load variables from dill file
-@validate_call
-def load_vars(source_file_path: str) -> dict[str, Any]:
+@simple_type_validator
+def load_dill(dill_file_path: str) -> Any:
     """
     Load variables from dill file.
 
@@ -1041,57 +1183,136 @@ def load_vars(source_file_path: str) -> dict[str, Any]:
 
     Returns
     -------
-    data : dict
-        Stored python variables.
-
+    Any
+        Stored object in the dill file.
     """
-    source_file_path = unc_path(source_file_path)
+    # Dependencies for multiprocessing
+    import dill
+
+    dill_file_path = unc_path(dill_file_path)
     # Validate extension
-    if os.path.splitext(source_file_path)[1] != ".dill":
-        raise ValueError(f"The specified source file must be a 'dill' file, got source_file_path: \n{source_file_path}")
+    if os.path.splitext(dill_file_path)[1] != ".dill":
+        raise ValueError(f"The specified source file must be a 'dill' file, got 'dill_file_path': \n{dill_file_path}")
 
     # Validate existence
-    if not os.path.exists(source_file_path):
-        raise ValueError(f"source_file_path does not exist: {source_file_path}")
+    if not os.path.exists(dill_file_path):
+        raise ValueError(f"Specified 'dill_file_path' does not exist: \n{dill_file_path}")
 
-    with open(source_file_path, "rb") as f:
-        data: dict[str, Any] = dill.load(f)
+    with open(dill_file_path, "rb") as f:
+        data = dill.load(f)
 
     return data
+
+
+# %% _wait_for_free_space for multiprocessing
+
+
+@simple_type_validator
+def _safe_disk_wait(
+    obj: Any,
+    path: str,
+    preprocess_status: Optional[dict[str, Any]] = None,
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
+    *,
+    min_sec_random_wait: float = 5.0,
+    max_sec_random_wait: float = 5.0,
+    obj_size_buffer_coeff: float = 1.1,
+) -> None:
+    """Safe '_wait_for_free_space' compatible with multiprocessing '_wait_for_completion' for multiprocessing."""
+    # Skip logic
+    if preprocess_status is None:
+        # Call plain _wait_for_free_space
+        _wait_for_free_space(
+            obj=obj,
+            path=path,
+            space_wait_timeout=space_wait_timeout,
+            reserve_free_pct=reserve_free_pct,
+            min_sec_random_wait=min_sec_random_wait,
+            max_sec_random_wait=max_sec_random_wait,
+            obj_size_buffer_coeff=obj_size_buffer_coeff,
+        )
+    # Apply with mp.Manager waiting list update
+    else:
+        waiting_list = preprocess_status['waiting_for_disk_space']
+        lock = preprocess_status['lock']
+
+        # Register waiting for the path
+        with lock:
+            waiting_list.append(path)
+
+        # Wait
+        try:
+            _wait_for_free_space(
+                obj=obj,
+                path=path,
+                space_wait_timeout=space_wait_timeout,
+                reserve_free_pct=reserve_free_pct,
+                min_sec_random_wait=min_sec_random_wait,
+                max_sec_random_wait=max_sec_random_wait,
+                obj_size_buffer_coeff=obj_size_buffer_coeff,
+            )
+
+        # Unregister waiting for the path
+        finally:
+            # Unregister
+            with lock:
+                if path in waiting_list:
+                    try:
+                        waiting_list.remove(path)
+                    except ValueError:
+                        # For concurrency error
+                        pass
 
 
 # %% Write to large csv
 
 
+# TODO: changed
 # Write pandas dataframe to csv with auto compression
-@validate_call
-def df_to_csv(  # type: ignore[no-untyped-def]
-    dataframe: Annotated[Any, AfterValidator(dataframe_validator())],
-    path: str,
+@simple_type_validator
+def df_to_csv(  # type: ignore[no-untyped-def]  # noqa: C901
+    dataframe: Annotated[Any, dataframe_validator()],
+    csv_path: str,
     index: bool = False,
-    return_path: bool = True,
+    return_path: bool = False,
     overwrite: bool = True,
-    compress_nvalue_threshold: int = 1000000,
-    compress_shape_threshold: tuple[int, int] = (1048576 - 1, 16384 - 1),
+    compress_nvalue_threshold: int = 5000000,
+    compress_shape_threshold: tuple[int, int] = (16384 - 1, 16384 - 1),
     compression_format: str = "zstd",
+    space_wait_timeout: int = 36000,
+    reserve_free_pct: float = 5.0,
+    min_sec_random_wait: float = 5.0,
+    max_sec_random_wait: float = 5.0,
+    obj_size_buffer_coeff: float = 2.0,
     **kwargs,
 ) -> Optional[str]:
     """
-    Write large Pandas dataframe to CSV file using automatical compression and return write path.
+    Write large Pandas dataframe to CSV file, automatically compress and optionally return write path.
     """
+
+    # Validate disk space before any I/O begins
+    _wait_for_free_space(
+        obj=dataframe,
+        path=csv_path,
+        reserve_free_pct=reserve_free_pct,
+        space_wait_timeout=space_wait_timeout,
+        min_sec_random_wait=min_sec_random_wait,
+        max_sec_random_wait=max_sec_random_wait,
+        obj_size_buffer_coeff=obj_size_buffer_coeff,
+    )
+
+    compression_format = compression_format.lower()
+
     # Compresion formats {parameter : ext}
-    ext = {"gzip": ".gz", "bz2": ".bz2", "zip": ".zip", "xz": ".xz", "zstd": ".zst", "infer": ""}
+    ext_map = {"gzip": ".gz", "bz2": ".bz2", "zip": ".zip", "xz": ".xz", "zstd": ".zst", "infer": ""}
 
     # Validate compression configs
-    if compression_format.lower() not in list(ext.keys()):
-        raise ValueError(
-            f"Compression_format must be one of 'gzip', 'bz2', 'zip', 'xz' and 'zstd', got : {compression_format}"
-        )
+    if compression_format not in ext_map:
+        raise ValueError(f"Compression_format must be one of {list(ext_map.keys())}, got: {compression_format}")
 
     # Validate compression
-    nvalues = 1
-    for d in dataframe.shape:
-        nvalues = nvalues * d
+    nvalues = dataframe.size
 
     # For small table, compression is not applied by default
     if (
@@ -1102,16 +1323,35 @@ def df_to_csv(  # type: ignore[no-untyped-def]
         compression_format = "infer"
 
     # Validate path
-    if (path.split(".")[-1]).lower() != "csv":
-        if not (
-            ((path.split(".")[-1]).lower() == ext[compression_format][1:]) and ((path.split(".")[-2]).lower() == "csv")
-        ):
-            raise ValueError(f"Invalid csv file path, got {path}, file extension must be '.csv'")
-    if ((path.split(".")[-1]).lower() == "csv") and (compression_format != "infer"):
-        path = path + ext[compression_format]
+    invalid_path: bool = False
+    path_split = csv_path.split(".")
+    if len(path_split) < 2:
+        invalid_path = True
+    # Path with specified compression extension
+    elif (path_split[-1]).lower() != "csv":
+        if len(path_split) < 3:
+            invalid_path = True
+        else:
+            # Validate extension
+            if compression_format == "infer":
+                if ((path_split[-1]).lower() in set(ext_map.values())) and ((path_split[-2]).lower() == "csv"):
+                    pass
+                else:
+                    invalid_path = True
+            elif ((path_split[-1]).lower() == ext_map[compression_format][1:]) and ((path_split[-2]).lower() == "csv"):
+                pass
+            else:
+                invalid_path = True
+    # Plain csv extension - auto convert to compression extension according to compression_format
+    else:
+        csv_path = csv_path + ext_map[compression_format]
+    # Raise for invalid path
+    if invalid_path:
+        raise ValueError(f"Invalid csv file path or compressed csv file path, got: \n{csv_path}\n")
+
     if not overwrite:
-        if os.path.exists(path):
-            raise ValueError(f"File path '{path}' already exists while overwrite is set {overwrite}")
+        if os.path.exists(csv_path):
+            raise ValueError(f"File path '{csv_path}' already exists while overwrite is set {overwrite}")
 
     # Validate other parameters
     # Get accepted parameters
@@ -1119,34 +1359,58 @@ def df_to_csv(  # type: ignore[no-untyped-def]
     accepted_params = sig.parameters.keys()
     # Filter kwargs and only allow accepted parameters
     filtered_params = {k: v for k, v in kwargs.items() if k in accepted_params}
-    path = unc_path(path)
-    filtered_params["path_or_buf"] = path
+    csv_path = unc_path(csv_path)
+    filtered_params["path_or_buf"] = csv_path
     filtered_params["compression"] = compression_format
     filtered_params["index"] = index
 
     # Write CSV
     dataframe.to_csv(**filtered_params)
     if return_path:
-        return path
+        return csv_path
     else:
         return None
 
 
+# TODO: changed
 # Read compressed csv
-@validate_call
-def df_from_csv(path: str, **kwargs) -> pd.DataFrame:  # type: ignore[no-untyped-def]
+@simple_type_validator
+def df_from_csv(csv_path: str, **kwargs) -> pd.DataFrame:  # type: ignore[no-untyped-def]  # noqa: C901
     """
-    Automatically read large CSV file with compression to Pandas dataframe.
+    Automatically read large CSV file with decompression to Pandas dataframe.
+    Automatically find compressed file if plain CSV file path does not exist.
     """
-    # Compresion formats {parameter : ext}
+    path = csv_path
+
+    # Compresion formats {ext : parameter}
     extr = {"gz": "gzip", "bz2": "bz2", "zip": "zip", "xz": "xz", "zst": "zstd"}
 
     # Validate path
-    if not os.path.exists(path):
+    find_path: bool = os.path.exists(path)
+    if not find_path:
+        # If user provided "data.csv", try "data.csv.gz", "data.csv.zst", etc.
+        if path.lower().endswith(".csv"):
+            for ext_suffix in extr.keys():
+                potential_path = f"{path}.{ext_suffix}"
+                if os.path.exists(potential_path):
+                    path = potential_path
+                    find_path = True
+                    break
+    if not find_path:
         raise ValueError(f"File path '{path}' is invalid.")
-    if ((path.split(".")[-1]).lower() != "csv") and (
+
+    # Validate path extension
+    invalid_path: bool = False
+    path_split = path.split(".")
+    if len(path_split) < 2:
+        invalid_path = True
+    elif len(path_split) < 3 and (path_split[-1]).lower() != "csv":
+        invalid_path = True
+    elif ((path.split(".")[-1]).lower() != "csv") and (
         not (((path.split(".")[-2]).lower() == "csv") and ((path.split(".")[-1]).lower() in list(extr.keys())))
     ):
+        invalid_path = True
+    if invalid_path:
         raise ValueError(
             f"Invalid CSV file '{path}', \
                 the file extension must be one of '.csv', '.csv.gz', '.csv.bz2', '.csv.zip', '.csv.xz' and '.csv.zst'"
@@ -1656,13 +1920,14 @@ def silent(func: Callable) -> Callable:
 # %% Robust listdir
 
 
+@simple_type_validator
 def lsdir_robust(  # noqa: C901
     path: str,
     fetch_number_gt: int = 0,
     *,
     retry: int = 5,
-    time_wait_min: float = 0.5,
-    time_wait_max: float = 20,
+    time_wait_min: Union[int, float] = 0.5,
+    time_wait_max: Union[int, float] = 20.0,
     include_hidden: bool = False,
 ) -> list:
     """

@@ -217,9 +217,9 @@ rf = RandomForestClassifier(n_estimators=10)
 knn = KNeighborsClassifier(n_neighbors=3)
 
 # Compose transformers and estimators to full factorial chains
-from swectral import factorial_transformer_chains
+from swectral import factorial_model_chains
 
-models = factorial_transformer_chains(
+models = factorial_model_chains(
     [StandardScaler()],
     {'feat5': selector1, 'feat_all': selector2},  # Specify custom model labels in dictionary
     estimators=[knn, rf],
@@ -327,7 +327,7 @@ knn_reg = KNeighborsRegressor(n_neighbors=3)
 rf_reg = RandomForestRegressor(n_estimators=10)
 
 # Compose transformers and estimators to full factorial chains
-models_reg = factorial_transformer_chains(
+models_reg = factorial_model_chains(
     [StandardScaler()],
     {'feat5': selector1_reg, 'feat_all': selector2},  # Specify custom model labels in dictionary
     estimators=[knn_reg, rf_reg],

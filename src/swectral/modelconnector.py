@@ -18,22 +18,29 @@ import warnings
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from typing import Any, Annotated, Union, Optional  # noqa: E402
+from collections import defaultdict
 import itertools
+import copy
 
 # Serialization
 import dill
 
 # Model
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin  # noqa: E402
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone  # noqa: E402
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted  # noqa: E402
 from sklearn.metrics import accuracy_score, r2_score  # noqa: E402
 
 # Local
 from .specio import simple_type_validator, arraylike_validator, unc_path  # noqa: E402
-from .pipeline_validator import _classifier_validator, _regressor_validator, _data_transformer_validator
+from .pipeline_validator import (
+    _classifier_validator,
+    _regressor_validator,
+    _data_transformer_validator,
+    _resampler_validator,
+)
 from .groupstats import (
-    regression_performance_marginal_stats,
     performance_metrics_summary,
+    regression_performance_marginal_stats,
     classification_performance_marginal_stats,
 )
 
@@ -46,20 +53,21 @@ from .groupstats import (
 
 
 @simple_type_validator
-def factorial_transformer_chains(  # noqa: C901
-    *step_transformers: tuple[Union[list[object], dict[str, object], None], ...],
+def factorial_model_chains(  # noqa: C901
+    *step_trainable_processors: tuple[Union[list[object], dict[str, object], None], ...],
     estimators: Union[list[object], dict[str, object]],
     is_regression: bool = True,
+    preserve_train_state: bool = False,
 ) -> list[object]:
     """
-    Combine data transformation models with estimators into chained models using a full-factorial approach.
+    Combine trainable data preprocessing models of each step with estimators into chained models using a full-factorial approach.
 
     Parameters
     ----------
-    step_transformers : tuple of (list of object, dict mapping str to object, or None)
-        Data transformers of each step.
+    step_trainable_processors : tuple of (list of object, dict mapping str to object, or None)
+        Data preprocessing model instance of each step.
 
-        Customize transformer name using dictionary input as {custom_name : transformer_model}.
+        Customize trainable processor name using dictionary input as {custom_name : trainable_processor}.
 
     estimators : list of object or dict mapping str to object
         Estimators for final step.
@@ -101,18 +109,19 @@ def factorial_transformer_chains(  # noqa: C901
         ...     estimators={'KNN': knn, 'RF': rf},
         ...     is_regression=False
         ... )
-    """
-    # Validate given step_transformers
-    if step_transformers is None:
-        raise ValueError("step_transformers is missing, provide at least one step of transformers.")
-    if len(step_transformers) < 1:
-        raise ValueError("step_transformers is missing, provide at least one step of transformers.")
+    """  # noqa: E501
+
+    # Validate given step_trainable_processors
+    if step_trainable_processors is None:
+        raise ValueError("step_trainable_processors is missing, provide at least one step of transformers.")
+    if len(step_trainable_processors) < 1:
+        raise ValueError("step_trainable_processors is missing, provide at least one step of transformers.")
     # Validate transformers at each step
-    for step_i_transformers in step_transformers:
+    for step_i_transformers in step_trainable_processors:
         if step_i_transformers is None:
-            raise ValueError("Provided step_transformers cannot be None.")
+            raise ValueError("Provided step_trainable_processors cannot be None.")
         if len(step_i_transformers) < 1:
-            raise ValueError("Provided step_transformers cannot be empty.")
+            raise ValueError("Provided step_trainable_processors cannot be empty.")
 
     # Get labels
     # Estimator model and model label options
@@ -125,7 +134,7 @@ def factorial_transformer_chains(  # noqa: C901
     # Transformaer model and model label options
     chain_model_options: list[list] = []
     chain_label_options: list[list] = []
-    for option in step_transformers:
+    for option in step_trainable_processors:
         if isinstance(option, dict):
             chain_model_options.append(list(option.values()))
             chain_label_options.append(list(option.keys()))
@@ -133,7 +142,7 @@ def factorial_transformer_chains(  # noqa: C901
             chain_model_options.append(list(option))
             chain_label_options.append([model.__class__.__name__ for model in option])
         else:
-            raise ValueError(f"step_transformers must be dict or list, got type: {type(option)}")
+            raise ValueError(f"step_trainable_processors must be dict or list, got type: {type(option)}")
 
     # Validate labels
     est_labels = []
@@ -176,24 +185,24 @@ def factorial_transformer_chains(  # noqa: C901
     combined_models = []
     for i in range(len(chain_model_list)):
         # Get transformer list and estimator
-        data_transformer = chain_model_list[i][:-1]
+        trainable_processor = chain_model_list[i][:-1]
         estimator = chain_model_list[i][-1]
         # Get label
-        data_transformer_label = chain_label_list[i][:-1]
+        trainable_processor_label = chain_label_list[i][:-1]
         estimator_label = chain_label_list[i][-1]
         # Combine models in chain
         if is_regression:
-            combined_model = combine_transformer_regressor(
-                data_transformer=data_transformer,
+            combined_model = combine_regressor(
+                trainable_processor=trainable_processor,
                 regressor=estimator,
-                data_transformer_label=data_transformer_label,
+                trainable_processor_label=trainable_processor_label,
                 regressor_label=estimator_label,
             )
         else:
-            combined_model = combine_transformer_classifier(
-                data_transformer=data_transformer,
+            combined_model = combine_classifier(
+                trainable_processor=trainable_processor,
                 classifier=estimator,
-                data_transformer_label=data_transformer_label,
+                trainable_processor_label=trainable_processor_label,
                 classifier_label=estimator_label,
             )
         # Append combined model
@@ -207,26 +216,27 @@ def factorial_transformer_chains(  # noqa: C901
 
 # Constructor - combined classifier
 @simple_type_validator
-def combine_transformer_classifier(  # noqa: C901
-    data_transformer: Union[object, list[object]],
+def combine_classifier(  # noqa: C901
+    trainable_processor: Union[object, list[object]],
     classifier: object,
-    data_transformer_label: Union[str, list[str], None] = None,
+    trainable_processor_label: Union[str, list[str], None] = None,
     classifier_label: Optional[str] = None,
+    preserve_train_state: bool = False,  # TODO: new
 ) -> object:
     """
-    Combine data transformation models with a classifier into a unified estimator that preserves component names.
+    Combine trainable data preprocessing models with a classifier into a unified estimator that preserves component names.
 
     This wrapper functions similarly to scikit-learn's Pipeline but compatible with any transformer and classifier that follows scikit-learn's method conventions.
 
     Parameters
     ----------
-    data_transformer : object or list of object
-        Data transformation model, any data transformation or feature selection model.
+    trainable_processor : object or list of object
+        Data preprocessing model(s), any trainable data preprocessing, feature selection, or resampling model(s).
 
     classifier : object
         Classification model.
 
-    data_transformer_label : str or list of str or None, optional
+    trainable_processor_label : str or list of str or None, optional
         Label(s) for the transformer(s). Defaults to model class names if not specified.
 
     classifier_label: str or None
@@ -242,7 +252,7 @@ def combine_transformer_classifier(  # noqa: C901
     Prepare models::
 
         >>> from sklearn.feature_selection import SelectKBest, f_classif
-        >>> from from sklearn.preprocessing import StandardScaler
+        >>> from sklearn.preprocessing import StandardScaler
         >>> from sklearn.neighbors import KNeighborsClassifier
 
         >>> selector = SelectKBest(f_classif, k=5)
@@ -251,59 +261,62 @@ def combine_transformer_classifier(  # noqa: C901
 
     Without specifying model labels::
 
-        >>> combined_model = combine_transformer_classifier([scaler, selector], knn)
+        >>> combined_model = combine_classifier([scaler, selector], knn)
 
     Specify model labels::
 
-        >>> combined_model = combine_transformer_classifier(
+        >>> combined_model = combine_classifier(
         ...     [scaler, selector],
         ...     knn,
-        ...     data_transformer_label=['scaler', 'selector'],
+        ...     trainable_processor_label=['scaler', 'selector'],
         ...     classifier_label='knn'
         ... )
     """  # noqa: E501
     # Validate input models
-    if isinstance(data_transformer, list):
-        if len(data_transformer) < 1:
+    if isinstance(trainable_processor, list):
+        if len(trainable_processor) < 1:
             raise ValueError("List of transformers must contain at least 1 transformer, got 0.")
         else:
-            data_transformers: list = data_transformer
+            trainable_processors: list = trainable_processor
     else:
-        data_transformers = [data_transformer]
-    # Validate transformers
-    for data_transformer in data_transformers:
-        _data_transformer_validator(data_transformer)
+        trainable_processors = [trainable_processor]
+    # Validate trainable processors
+    for trainable_processor in trainable_processors:
+        if hasattr(trainable_processor, "fit_resample"):
+            _resampler_validator(trainable_processor)
+        else:
+            _data_transformer_validator(trainable_processor)
     # Validate estimator
     _classifier_validator(classifier)
 
     # Create combined name
-    transformer_name = ""
-    transformer_name_list = []
-    if data_transformer_label is None:
-        for data_transformer in data_transformers:
-            transformer_name = transformer_name + f"{data_transformer.__class__.__name__}_"
-            transformer_name_list.append(data_transformer.__class__.__name__)
+    trainable_processor_name = ""
+    trainable_processor_name_list = []
+    if trainable_processor_label is None:
+        for trainable_processor in trainable_processors:
+            trainable_processor_name = trainable_processor_name + f"{trainable_processor.__class__.__name__}_"
+            trainable_processor_name_list.append(trainable_processor.__class__.__name__)
     else:
-        if isinstance(data_transformer_label, str):
-            data_transformer_label = [data_transformer_label]
-        assert isinstance(data_transformer_label, list)
-        if len(data_transformers) != len(data_transformer_label):
+        if isinstance(trainable_processor_label, str):
+            trainable_processor_label = [trainable_processor_label]
+        assert isinstance(trainable_processor_label, list)
+        if len(trainable_processors) != len(trainable_processor_label):
             raise ValueError(
-                f"Got {len(data_transformers)} data transformers, but got {len(data_transformer_label)} label:\
-                    {data_transformer_label}"
+                f"Got {len(trainable_processors)} data transformers, but got {len(trainable_processor_label)} label:\
+                    {trainable_processor_label}"
             )
-        for label in data_transformer_label:
-            transformer_name = transformer_name + f"{label}_"
-            transformer_name_list.append(label)
+        for label in trainable_processor_label:
+            trainable_processor_name = trainable_processor_name + f"{label}_"
+            trainable_processor_name_list.append(label)
     if classifier_label is None:
         classifier_label = classifier.__class__.__name__
-    combined_name = transformer_name + classifier_label
+    combined_name = trainable_processor_name + classifier_label
 
     # Create new model class to customize name
-    class CombinedModel(TransClassifier):
+    class CombinedModel(CombinedClassifier):
 
         def __repr__(self) -> str:
-            return "TransClassifier_" + combined_name
+            return "CombinedClassifier_" + combined_name
 
         def __str__(self) -> str:
             return combined_name
@@ -313,37 +326,42 @@ def combine_transformer_classifier(  # noqa: C901
     CombinedModel.__qualname__ = combined_name
 
     # Add name attributes
-    CombinedModel._transformer_labels = transformer_name_list
+    CombinedModel._preprocessor_labels = trainable_processor_name_list
     CombinedModel._classifier_label = classifier_label
 
     # Create model instance
-    combined_model = CombinedModel(data_transformers=data_transformers, classifier=classifier)
+    combined_model = CombinedModel(
+        trainable_processors=trainable_processors,
+        classifier=classifier,
+        preserve_train_state=preserve_train_state,  # TODO: new
+    )
 
     return combined_model
 
 
 # Constructor - combined regressor
 @simple_type_validator
-def combine_transformer_regressor(  # noqa: C901
-    data_transformer: Union[object, list[object]],
+def combine_regressor(  # noqa: C901
+    trainable_processor: Union[object, list[object]],
     regressor: object,
-    data_transformer_label: Optional[list[str]] = None,
+    trainable_processor_label: Union[str, list[str], None] = None,
     regressor_label: Optional[str] = None,
+    preserve_train_state: bool = False,  # TODO: new
 ) -> object:
     """
-    Combine data transformation models with a regressor into a unified estimator that preserves component names.
+    Combine trainable data preprocessing models with a regressor into a unified estimator that preserves component names.
 
     This wrapper functions similarly to scikit-learn's Pipeline but compatible with any transformer and regressor that follows scikit-learn's method conventions.
 
     Parameters
     ----------
-    data_transformer : object or list of object
-        Data transformation model(s), any data transformation or feature selection model(s).
+    trainable_processor : object or list of object
+        Data preprocessing model(s), any trainable data preprocessing, feature selection, or resampling model(s).
 
     regressor : object
-        Classification model.
+        Regression model.
 
-    data_transformer_label : str or list of str or None, optional
+    trainable_processor_label : str or list of str or None, optional
         Label(s) for the transformer(s). Defaults to model class names if not specified.
 
     regressor_label: str or None
@@ -359,7 +377,7 @@ def combine_transformer_regressor(  # noqa: C901
     Prepare models::
 
         >>> from sklearn.feature_selection import SelectKBest, f_regression
-        >>> from from sklearn.preprocessing import StandardScaler
+        >>> from sklearn.preprocessing import StandardScaler
         >>> from sklearn.neighbors import KNeighborsRegressor
 
         >>> selector = SelectKBest(f_regression, k=5)
@@ -368,56 +386,63 @@ def combine_transformer_regressor(  # noqa: C901
 
     Without specifying model labels::
 
-        >>> combined_model = combine_transformer_regressor([scaler, selector], knn)
+        >>> combined_model = combine_regressor([scaler, selector], knn)
 
     Specify model labels::
 
-        >>> combined_model = combine_transformer_regressor(
+        >>> combined_model = combine_regressor(
         ...     [scaler, selector],
         ...     knn,
-        ...     data_transformer_label=['scaler', 'selector'],
+        ...     trainable_processor_label=['scaler', 'selector'],
         ...     regressor_label='knn'
         ... )
     """  # noqa: E501
     # Validate input models
-    if isinstance(data_transformer, list):
-        if len(data_transformer) < 1:
+    if isinstance(trainable_processor, list):
+        if len(trainable_processor) < 1:
             raise ValueError("List of transformers must contain at least 1 transformer, got 0.")
         else:
-            data_transformers: list = data_transformer
+            trainable_processors: list = trainable_processor
     else:
-        data_transformers = [data_transformer]
-    # Validate transformers
-    for data_transformer in data_transformers:
-        _data_transformer_validator(data_transformer)
+        trainable_processors = [trainable_processor]
+    # Validate trainable processors
+    for trainable_processor in trainable_processors:
+        if hasattr(trainable_processor, "fit_resample"):
+            _resampler_validator(trainable_processor)
+        else:
+            _data_transformer_validator(trainable_processor)
     # Validate estimator
     _regressor_validator(regressor)
 
     # Create combined name
-    transformer_name = ""
-    transformer_name_list = []
-    if data_transformer_label is None:
-        for data_transformer in data_transformers:
-            transformer_name = transformer_name + f"{data_transformer.__class__.__name__}_"
-            transformer_name_list.append(data_transformer.__class__.__name__)
+    trainable_processor_name = ""
+    trainable_processor_name_list = []
+    if trainable_processor_label is None:
+        for trainable_processor in trainable_processors:
+            trainable_processor_name = trainable_processor_name + f"{trainable_processor.__class__.__name__}_"
+            trainable_processor_name_list.append(trainable_processor.__class__.__name__)
     else:
-        if len(data_transformers) != len(data_transformer_label):
+        # TODO: new
+        if isinstance(trainable_processor_label, str):
+            trainable_processor_label = [trainable_processor_label]
+        assert isinstance(trainable_processor_label, list)
+        if len(trainable_processors) != len(trainable_processor_label):
             raise ValueError(
-                f"Got {len(data_transformers)} data transformers, but got {len(data_transformer_label)} label:\
-                    {data_transformer_label}"
+                f"Got {len(trainable_processors)} data transformers, but got {len(trainable_processor_label)} label:\
+                    {trainable_processor_label}"
             )
-        for label in data_transformer_label:
-            transformer_name = transformer_name + f"{label}_"
-            transformer_name_list.append(label)
+        for label in trainable_processor_label:
+            trainable_processor_name = trainable_processor_name + f"{label}_"
+            trainable_processor_name_list.append(label)
     if regressor_label is None:
         regressor_label = regressor.__class__.__name__
-    combined_name = transformer_name + regressor_label
+    combined_name = trainable_processor_name + regressor_label
 
     # Create new model class to customize name
-    class CombinedModel(TransRegressor):
+    class CombinedModel(CombinedRegressor):
 
         def __repr__(self) -> str:
-            return "TransRegressor_" + combined_name
+            return "CombinedRegressor_" + combined_name
 
         def __str__(self) -> str:
             return combined_name
@@ -427,11 +452,15 @@ def combine_transformer_regressor(  # noqa: C901
     CombinedModel.__qualname__ = combined_name
 
     # Add name attributes
-    CombinedModel._transformer_labels = transformer_name_list
+    CombinedModel._preprocessor_labels = trainable_processor_name_list
     CombinedModel._regressor_label = regressor_label
 
     # Create model instance
-    combined_model = CombinedModel(data_transformers=data_transformers, regressor=regressor)
+    combined_model = CombinedModel(
+        trainable_processors=trainable_processors,
+        regressor=regressor,
+        preserve_train_state=preserve_train_state,  # TODO: new
+    )
 
     return combined_model
 
@@ -439,52 +468,139 @@ def combine_transformer_regressor(  # noqa: C901
 # %% Combiner models
 
 
-# Combined classifier
-class TransClassifier(BaseEstimator, ClassifierMixin):
+# Safe clone a model - if sklearn-compliant use cheaper sklearn clone, or use deepcopy
+@simple_type_validator
+def safe_clone(model_instance: object, preserve_train_state: bool) -> object:
     """
-    Combine a chain of data transformation models with a classifier into a unified estimator.
-    This wrapper functions similarly to scikit-learn's Pipeline but only requires transformers and classifier to follow scikit-learn's method conventions.
+    Safe clone for ML pipeline components.
+    If sklearn-compliant, use cheaper sklearn clone, or use deepcopy.
+    """
+    if preserve_train_state:
+        cloned = copy.deepcopy(model_instance)
+    else:
+        # Try sklearn ecosystem cloning
+        try:
+            cloned = clone(model_instance)
+
+            # Optional but highly recommended sanity check
+            if hasattr(model_instance, "get_params"):
+                original_params = model_instance.get_params()
+                cloned_params = cloned.get_params()
+
+                if str(original_params) != str(cloned_params):
+                    raise ValueError("Clone parameter reconstruction mismatch.")
+            else:
+                raise ValueError("Not sklearn-compatible, use deepcopy instead.")
+
+        except Exception:
+            # Fallback for non-sklearn-compatible objects
+            cloned = copy.deepcopy(model_instance)
+    return cloned
+
+
+# %% Combined classifier
+
+
+class CombinedClassifier(BaseEstimator, ClassifierMixin):
+    """
+    Combine a chain of data preprocessing models with a classifier into a unified estimator.
+    This wrapper function works similarly to scikit-learn's Pipeline.
+    It requires transformers and classifier to follow scikit-learn's method conventions, and requires resamplers to implement method 'fit_resample'.
 
     Attributes
     ----------
-    data_transformers : list of object
-        List of data transformation models, any data transformation or feature selection model.
+    trainable_processors : list of object
+        List of data preprocessing models, any data transformation, feature selection or resampling model.
     classifier : object
         Classification model.
 
     Methods
     -------
     fit(X, y)
-        Fit the transformer on X, then fit the classifier on transformed X.
+        Fit the trainable processor on X, then fit the classifier on transformed X.
     transform(X)
-        Transform X using the fitted transformer.
+        Transform X using the fitted trainable processor.
     predict(X)
-        Transform X using the fitted transformer, then predict using the fitted classifier.
+        Transform X using the fitted trainable processor, then predict using the fitted classifier.
     predict_proba(X)
-        Predict the probability of X using the fitted transformer and classifier.
+        Predict the probability of X using the fitted trainable processor and classifier.
     score(X, y)
         Compute the accuracy score of the fitted models on the provided X and y.
     """  # noqa: E501
 
     @simple_type_validator
-    def __init__(self, data_transformers: list[object], classifier: object) -> None:
-        # Validate transformers
-        for transformer in data_transformers:
-            _data_transformer_validator(transformer)
-        self.data_transformers: list[object] = data_transformers
+    def __init__(
+        self,
+        trainable_processors: list[object],
+        classifier: object,
+        preserve_train_state: bool = False,
+    ) -> None:
+        # Validate transformers and resamplers
+        for trainable_processor in trainable_processors:
+            if hasattr(trainable_processor, "fit_resample"):
+                _resampler_validator(trainable_processor)
+            else:
+                _data_transformer_validator(trainable_processor)
+        self.trainable_processors: list[object] = trainable_processors
+        # TODO: new
+        self.trainable_processors_: Optional[list[object]] = None
         # Validate classifiers
         _classifier_validator(classifier)
         self.classifier: object = classifier
-        self._is_trans_classifier: bool = True
+        # TODO: new
+        self.classifier_: Optional[object] = None
+        # TODO: new
+        self.preserve_train_state: bool = preserve_train_state
+        self._is_combined_classifier: bool = True
+
+    # TODO: new
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """get_params for sklearn.GridSearchCV."""
+        # Get top-level params automatically via BaseEstimator
+        params: dict[str, Any] = super().get_params(deep=False)
+        if deep:
+            if hasattr(self.classifier, "get_params"):
+                for key, value in self.classifier.get_params(deep=True).items():
+                    params[f"classifier__{key}"] = value
+            for i, proc in enumerate(self.trainable_processors):
+                if hasattr(proc, "get_params"):
+                    for key, value in proc.get_params(deep=True).items():
+                        params[f"processor_{i}__{key}"] = value
+        return params
+
+    # TODO: new
+    def set_params(self, **params: Any) -> "CombinedClassifier":
+        """set_params for sklearn.GridSearchCV."""
+        if not params:
+            return self
+        nested_params: dict[str, dict[str, Any]] = defaultdict(dict)
+        for key, value in params.items():
+            if "__" in key:
+                prefix, sub_key = key.split("__", 1)
+                nested_params[prefix][sub_key] = value
+            else:
+                setattr(self, key, value)
+        # Dispatch to the classifier
+        if "classifier" in nested_params:
+            est = self.classifier
+            if hasattr(est, "set_params"):
+                est.set_params(**nested_params["classifier"])  # type: ignore
+        # Dispatch to the transformers
+        for i, proc in enumerate(self.trainable_processors):
+            prefix = f"processor_{i}"
+            if prefix in nested_params:
+                if hasattr(proc, "set_params"):
+                    proc.set_params(**nested_params[prefix])  # type: ignore
+        return self
 
     @simple_type_validator
     def fit(
         self,
         X: Annotated[Any, arraylike_validator(ndim=2)],  # noqa: N803
         y: Annotated[Any, arraylike_validator(ndim=1)],
-    ) -> 'TransClassifier':
+    ) -> 'CombinedClassifier':
         """
-        Fit the transformer on X, then fit the classifier on transformed X.
+        Fit the trainable processor on X, then fit the classifier on transformed X.
 
         Parameters
         ----------
@@ -495,27 +611,46 @@ class TransClassifier(BaseEstimator, ClassifierMixin):
 
         Returns
         -------
-        TransRegressor
+        CombinedClassifier
             The fitted combined model.
         """
+        # TODO: new
+        # Clone models
+        self.trainable_processors_ = [
+            safe_clone(trainable_processor, self.preserve_train_state)
+            for trainable_processor in self.trainable_processors
+        ]
+        self.classifier_ = safe_clone(self.classifier, self.preserve_train_state)
         # Validate inputs
         X = np.asarray(X)
         X, y = check_X_y(X, y)
-        # Fit transformers and transform X_train
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'fit')
-            try:
-                transformer.fit(X)  # Try unsupervised
-            except Exception:
-                transformer.fit(X, y)  # Try supervised
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
+        # Fit trainable preprocessors and transform X_train
+        for trainable_processor in self.trainable_processors_:
+            # TODO: new
+            # imblearn-style sampler
+            if hasattr(trainable_processor, "fit_resample"):
+                X, y = trainable_processor.fit_resample(X, y)
+            elif hasattr(trainable_processor, "fit") and hasattr(trainable_processor, "transform"):
+                # sklearn transformer supporting fit & transform
+                try:
+                    trainable_processor.fit(X, y)
+                except Exception:
+                    trainable_processor.fit(X)
+                X = trainable_processor.transform(X)
+            else:
+                related_method = ['fit', 'transform', 'fit_resample', 'predict', 'fit_predict', 'predict_proba']
+                existing_methods = [m for m in related_method if hasattr(trainable_processor, m)]
+                raise TypeError(
+                    f"Transformer '{type(trainable_processor).__name__}' is incompatible. "
+                    + "Need 'fit_resample' or ('fit' and 'transform'). "
+                    + f"Found methods: {existing_methods}"
+                )
         # Fit classifier
-        assert hasattr(self.classifier, 'fit')
-        self.classifier.fit(X, y)
+        assert hasattr(self.classifier_, 'fit')
+        self.classifier_.fit(X, y)
         self.is_fitted_ = True
-        if hasattr(self.classifier, 'classes_'):
-            self.classes_ = self.classifier.classes_  # Add attr classes_ to outer model wrapper
+        if hasattr(self.classifier_, 'classes_'):
+            self.classes_ = self.classifier_.classes_  # Add attr classes_ to outer model wrapper
         else:
             raise ValueError(
                 "Invalid classifier without 'classes_', "
@@ -529,7 +664,7 @@ class TransClassifier(BaseEstimator, ClassifierMixin):
     @simple_type_validator
     def transform(self, X: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:  # noqa: N803
         """
-        Transform X using the fitted transformer.
+        Transform X using the fitted trainable processor.
 
         Parameters
         ----------
@@ -544,16 +679,18 @@ class TransClassifier(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
         X = check_array(X)
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
+        # TODO: changed
+        assert self.trainable_processors_ is not None
+        for trainable_processor in self.trainable_processors_:
+            if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
+                X = trainable_processor.transform(X)
         result: np.ndarray = np.asarray(X)
         return result
 
     @simple_type_validator
     def predict(self, X: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:  # noqa: N803
         """
-        Transform X using the fitted transformer, then predict targets using the fitted classifier.
+        Transform X using the fitted trainable processor, then predict targets using the fitted classifier.
 
         Parameters
         ----------
@@ -569,19 +706,23 @@ class TransClassifier(BaseEstimator, ClassifierMixin):
         X = np.asarray(X)
         X = check_array(X)
         # Transform X_pred
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
+        # TODO: changed
+        assert self.trainable_processors_ is not None
+        for trainable_processor in self.trainable_processors_:
+            # TODO: changed
+            if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
+                X = trainable_processor.transform(X)
         # Predict using classifier
-        assert hasattr(self.classifier, 'predict')
-        y_pred = self.classifier.predict(X)
+        assert self.classifier_ is not None
+        assert hasattr(self.classifier_, 'predict')
+        y_pred = self.classifier_.predict(X)
         y_pred_arr: np.ndarray = np.asarray(y_pred)
         return y_pred_arr
 
     @simple_type_validator
     def predict_proba(self, X: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:  # noqa: N803
         """
-        Transform X using the fitted transformer, then predict the probabilities of the targets using the fitted classifier.
+        Transform X using the fitted trainable_processor, then predict the probabilities of the targets using the fitted classifier.
 
         Parameters
         ----------
@@ -596,11 +737,14 @@ class TransClassifier(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
         X = check_array(X)
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
-        assert hasattr(self.classifier, 'predict_proba')
-        y_pred_proba = self.classifier.predict_proba(X)
+        # TODO: changed
+        assert self.trainable_processors_ is not None
+        for trainable_processor in self.trainable_processors_:
+            if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
+                X = trainable_processor.transform(X)
+        assert self.classifier_ is not None
+        assert hasattr(self.classifier_, 'predict_proba')
+        y_pred_proba = self.classifier_.predict_proba(X)
         y_pred_proba_arr: np.ndarray = np.asarray(y_pred_proba)
         return y_pred_proba_arr
 
@@ -622,36 +766,44 @@ class TransClassifier(BaseEstimator, ClassifierMixin):
 
         Returns
         -------
-        TransRegressor
+        CombinedClassifier
             The fitted combined model.
         """
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
-        if hasattr(self.classifier, 'score'):
-            assert hasattr(self.classifier, 'score')
-            overall_accuracy = self.classifier.score(X, y)
+        # TODO: changed
+        assert self.trainable_processors_ is not None
+        for trainable_processor in self.trainable_processors_:
+            if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
+                X = trainable_processor.transform(X)
+        if hasattr(self.classifier_, 'score'):
+            assert self.classifier_ is not None
+            assert hasattr(self.classifier_, 'score')
+            overall_accuracy = self.classifier_.score(X, y)
         else:
-            assert hasattr(self.classifier, 'predict')
-            y_pred = self.classifier.predict(X)
+            assert self.classifier_ is not None
+            assert hasattr(self.classifier_, 'predict')
+            y_pred = self.classifier_.predict(X)
             overall_accuracy = accuracy_score(y, y_pred)
         overall_accuracy = float(overall_accuracy)
         return overall_accuracy
 
 
+# %% Combined regressor
+
+
 # Combined regressor
-class TransRegressor(BaseEstimator, RegressorMixin):
+class CombinedRegressor(BaseEstimator, RegressorMixin):
     """
-    Combine a chain of data transformation models with a regressor into a unified estimator.
-    This wrapper functions similarly to scikit-learn's Pipeline but compatible with any transformer and regressor that follows scikit-learn's method conventions.
+    Combine a chain of data preprocessing models with a regressor into a unified estimator.
+    This wrapper function works similarly to scikit-learn's Pipeline.
+    It requires transformers and regressor to follow scikit-learn's method conventions, and requires resamplers to implement method 'fit_resample'.
 
     Attributes
     ----------
-    data_transformers : list
-        List of Data transformation models, any data transformation or feature selection model.
-    regressor
+    trainable_processors : list of object
+        List of data preprocessing models, any data transformation, feature selection or resampling model.
+    regressor : object
         Regression model.
 
     Methods
@@ -667,52 +819,125 @@ class TransRegressor(BaseEstimator, RegressorMixin):
     """  # noqa: E501
 
     @simple_type_validator
-    def __init__(self, data_transformers: list[object], regressor: object) -> None:
-        # Validate transformers
-        for transformer in data_transformers:
-            _data_transformer_validator(transformer)
-        self.data_transformers: list[object] = data_transformers
-        # Validate regressor
+    def __init__(
+        self,
+        trainable_processors: list[object],
+        regressor: object,
+        preserve_train_state: bool = False,
+    ) -> None:
+        # Validate transformers and resamplers
+        for trainable_processor in trainable_processors:
+            if hasattr(trainable_processor, "fit_resample"):
+                _resampler_validator(trainable_processor)
+            else:
+                _data_transformer_validator(trainable_processor)
+        self.trainable_processors: list[object] = trainable_processors
+        # TODO: new
+        self.trainable_processors_: Optional[list[object]] = None
+        # Validate regressors
         _regressor_validator(regressor)
         self.regressor: object = regressor
-        self._is_trans_regressor: bool = True
+        # TODO: new
+        self.regressor_: Optional[object] = None
+        # TODO: new
+        self.preserve_train_state: bool = preserve_train_state
+        self._is_combined_regressor: bool = True
+
+    # TODO: new
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """get_params for sklearn.GridSearchCV."""
+        # Get top-level params automatically via BaseEstimator
+        params: dict[str, Any] = super().get_params(deep=False)
+        if deep:
+            if hasattr(self.regressor, "get_params"):
+                for key, value in self.regressor.get_params(deep=True).items():
+                    params[f"regressor__{key}"] = value
+            for i, proc in enumerate(self.trainable_processors):
+                if hasattr(proc, "get_params"):
+                    for key, value in proc.get_params(deep=True).items():
+                        params[f"processor_{i}__{key}"] = value
+        return params
+
+    # TODO: new
+    def set_params(self, **params: Any) -> "CombinedRegressor":
+        """set_params for sklearn.GridSearchCV."""
+        if not params:
+            return self
+        nested_params: dict[str, dict[str, Any]] = defaultdict(dict)
+        for key, value in params.items():
+            if "__" in key:
+                prefix, sub_key = key.split("__", 1)
+                nested_params[prefix][sub_key] = value
+            else:
+                setattr(self, key, value)
+        # Dispatch to the regressor
+        if "regressor" in nested_params:
+            est = self.regressor
+            if hasattr(est, "set_params"):
+                est.set_params(**nested_params["regressor"])  # type: ignore
+        # Dispatch to the transformers
+        for i, proc in enumerate(self.trainable_processors):
+            prefix = f"processor_{i}"
+            if prefix in nested_params:
+                if hasattr(proc, "set_params"):
+                    proc.set_params(**nested_params[prefix])  # type: ignore
+        return self
 
     @simple_type_validator
     def fit(
         self,
         X: Annotated[Any, arraylike_validator(ndim=2)],  # noqa: N803
         y: Annotated[Any, arraylike_validator(ndim=1)],
-    ) -> 'TransRegressor':
+    ) -> 'CombinedRegressor':
         """
-        Fit the transformer on X, then fit the regressor on transformed X.
+        Fit the trainable processor on X, then fit the regressor on transformed X.
 
         Parameters
         ----------
         X : 2D array-like
             Training dataset.
-        y : Annotated[Any, arraylike_validator(ndim, optional
+        y : 1D array-like, optional
             Training target values.
 
         Returns
         -------
-        TransRegressor
+        CombinedRegressor
             The fitted combined model.
         """
+        # TODO: new
+        # Clone models
+        self.trainable_processors_ = [
+            safe_clone(trainable_processor, self.preserve_train_state)
+            for trainable_processor in self.trainable_processors
+        ]
+        self.regressor_ = safe_clone(self.regressor, self.preserve_train_state)
         # Validate inputs
         X = np.asarray(X)
         X, y = check_X_y(X, y)
-        # Fit transformer and transform X_train
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'fit')
-            try:
-                transformer.fit(X)  # Try unsupervised
-            except Exception:
-                transformer.fit(X, y)  # Try supervised
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
+        # Fit trainable preprocessors and transform X_train
+        for trainable_processor in self.trainable_processors_:
+            # TODO: new
+            # imblearn-style sampler
+            if hasattr(trainable_processor, "fit_resample"):
+                X, y = trainable_processor.fit_resample(X, y)
+            elif hasattr(trainable_processor, "fit") and hasattr(trainable_processor, "transform"):
+                # sklearn transformer supporting fit & transform
+                try:
+                    trainable_processor.fit(X, y)
+                except Exception:
+                    trainable_processor.fit(X)
+                X = trainable_processor.transform(X)
+            else:
+                related_method = ['fit', 'transform', 'fit_resample', 'predict', 'fit_predict', 'predict_proba']
+                existing_methods = [m for m in related_method if hasattr(trainable_processor, m)]
+                raise TypeError(
+                    f"Transformer '{type(trainable_processor).__name__}' is incompatible. "
+                    + "Need 'fit_resample' or ('fit' and 'transform'). "
+                    + f"Found methods: {existing_methods}"
+                )
         # Fit regressor
-        assert hasattr(self.regressor, 'fit')
-        self.regressor.fit(X, y)
+        assert hasattr(self.regressor_, 'fit')
+        self.regressor_.fit(X, y)
         self.is_fitted_ = True
         return self
 
@@ -722,7 +947,7 @@ class TransRegressor(BaseEstimator, RegressorMixin):
     @simple_type_validator
     def transform(self, X: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:  # noqa: N803
         """
-        Transform X using the fitted transformer.
+        Transform X using the fitted trainable processor.
 
         Parameters
         ----------
@@ -737,16 +962,18 @@ class TransRegressor(BaseEstimator, RegressorMixin):
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
         X = check_array(X)
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
+        # TODO: changed
+        assert self.trainable_processors_ is not None
+        for trainable_processor in self.trainable_processors_:
+            if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
+                X = trainable_processor.transform(X)
         result: np.ndarray = np.asarray(X)
         return result
 
     @simple_type_validator
     def predict(self, X: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:  # noqa: N803
         """
-        Transform X using the fitted transformer, then predict targets using the fitted regressor.
+        Transform X using the fitted trainable processor, then predict targets using the fitted regressor.
 
         Parameters
         ----------
@@ -762,12 +989,16 @@ class TransRegressor(BaseEstimator, RegressorMixin):
         X = np.asarray(X)
         X = check_array(X)
         # Transform X_pred
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
+        # TODO: changed
+        assert self.trainable_processors_ is not None
+        for trainable_processor in self.trainable_processors_:
+            # TODO: changed
+            if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
+                X = trainable_processor.transform(X)
         # Predict using regressor
-        assert hasattr(self.regressor, 'predict')
-        y_pred = self.regressor.predict(X)
+        assert self.regressor_ is not None
+        assert hasattr(self.regressor_, 'predict')
+        y_pred = self.regressor_.predict(X)
         y_pred_arr: np.ndarray = np.asarray(y_pred)
         return y_pred_arr
 
@@ -784,25 +1015,29 @@ class TransRegressor(BaseEstimator, RegressorMixin):
         ----------
         X : 2D array-like
             Test dataset.
-        y : Annotated[Any, arraylike_validator(ndim, optional
+        y : 1D array-like, optional
             Test target values.
 
         Returns
         -------
-        TransRegressor
+        CombinedRegressor
             The fitted combined model.
         """
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
-        for transformer in self.data_transformers:
-            assert hasattr(transformer, 'transform')
-            X = transformer.transform(X)
-        if hasattr(self.regressor, 'score'):
-            assert hasattr(self.regressor, 'score')
-            gof_score = self.regressor.score(X, y)
+        # TODO: changed
+        assert self.trainable_processors_ is not None
+        for trainable_processor in self.trainable_processors_:
+            if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
+                X = trainable_processor.transform(X)
+        if hasattr(self.regressor_, 'score'):
+            assert self.regressor_ is not None
+            assert hasattr(self.regressor_, 'score')
+            gof_score = self.regressor_.score(X, y)
         else:
-            assert hasattr(self.regressor, 'predict')
-            y_pred = self.regressor.predict(X)
+            assert self.regressor_ is not None
+            assert hasattr(self.regressor_, 'predict')
+            y_pred = self.regressor_.predict(X)
             gof_score = r2_score(y, y_pred)
         gof_score = float(gof_score)
         return gof_score
@@ -813,7 +1048,7 @@ class TransRegressor(BaseEstimator, RegressorMixin):
 
 class IdentityTransformer(BaseEstimator, TransformerMixin):
     """
-    A passthrough transformer that returns the input data unchanged.
+    A passthrough scikit-learn-style transformer that returns the input data unchanged.
 
     This transformer is useful as a placeholder in pipelines or for enforcing a consistent transformer interface without modifying data.
     """  # noqa: E501
@@ -886,6 +1121,40 @@ class IdentityTransformer(BaseEstimator, TransformerMixin):
         return result
 
 
+# %% Identity transformer for passthrough
+
+
+class IdentityResampler(BaseEstimator):
+    """
+    A passthrough imblearn-style resampler that returns the input data unchanged.
+
+    This resampler is useful as a placeholder in pipelines or for enforcing a consistent resampler interface without modifying data.
+    """  # noqa: E501
+
+    @simple_type_validator
+    def fit_resample(
+        self,
+        X: Annotated[Any, arraylike_validator()],  # noqa: N803
+        y: Optional[Annotated[Any, arraylike_validator()]] = None,
+    ) -> tuple[Any, Any]:  # noqa: N803
+        """
+        Fit the transformer and return the input data unchanged.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Input data.
+        y : array-like of shape (n_samples,), optional
+            Target values. Ignored.
+
+        Returns
+        -------
+        tuple[Any, Any]
+            The input X and y.
+        """
+        return X, y
+
+
 # %% Combined model statistics
 
 
@@ -912,7 +1181,7 @@ def _convert_metrics_combined_model(metrics_dict: dict, modeleva_report_dir: str
         if os.path.exists(combined_model_info_path):
             with open(combined_model_info_path, 'rb') as f:
                 combined_model_info = dill.load(f)
-                model_component_list = list(combined_model_info['model_transformer_labels']) + [
+                model_component_list = list(combined_model_info['model_preprocessor_labels']) + [
                     combined_model_info['model_estimator_label']
                 ]
         else:
@@ -964,7 +1233,11 @@ def _convert_metrics_combined_model(metrics_dict: dict, modeleva_report_dir: str
 # Combined model component marginal performance statistics
 @simple_type_validator
 def combined_model_marginal_stats(
-    report_directory: str, metrics_dict: Optional[dict[str, Any]] = None
+    report_directory: str,
+    metrics_dict: Optional[dict[str, Any]] = None,
+    *,
+    _space_wait_timeout: int = 36000,
+    _reserve_free_pct: float = 5.0,
 ) -> dict[str, Any]:
     """
     Compute marginal model performance statistics on combined model components of the performance metrics from SpecPipe model evaluation reports.
@@ -1012,7 +1285,12 @@ def combined_model_marginal_stats(
 
     # Summarize performance
     if compute_metrics_dict:
-        metrics_dict = performance_metrics_summary(pipeline_config_dir, model_evaluation_report_dir)
+        metrics_dict = performance_metrics_summary(
+            pipeline_config_dir=pipeline_config_dir,
+            model_evaluation_report_dir=model_evaluation_report_dir,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
+        )
 
     # Add model step info
     metrics_dict_model = _convert_metrics_combined_model(metrics_dict, model_evaluation_report_dir)
@@ -1022,11 +1300,21 @@ def combined_model_marginal_stats(
     assert metrics_dict is not None
     if metrics_dict["is_regression"]:
         marginal_performance_stats = regression_performance_marginal_stats(
-            metrics_dict_model, pipeline_config_dir, model_evaluation_report_dir, validate_process=False
+            metrics_dict=metrics_dict_model,
+            pipeline_config_dir=pipeline_config_dir,
+            model_evaluation_report_dir=model_evaluation_report_dir,
+            validate_process=False,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
         )
     else:
         marginal_performance_stats = classification_performance_marginal_stats(
-            metrics_dict_model, pipeline_config_dir, model_evaluation_report_dir, validate_process=False
+            metrics_dict=metrics_dict_model,
+            pipeline_config_dir=pipeline_config_dir,
+            model_evaluation_report_dir=model_evaluation_report_dir,
+            validate_process=False,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
         )
 
     return marginal_performance_stats

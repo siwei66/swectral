@@ -28,7 +28,7 @@ from .specio import (
     arraylike_validator,
     simple_type_validator,
     unc_path,
-    load_vars,
+    load_dill,
 )
 from .assembly import identity_assembly
 
@@ -327,7 +327,26 @@ def _data_transformer_validator(data_transformer: object) -> None:
             f"Expected a transformer instance, but got '{data_transformer} with type '{type(data_transformer)}'."
         )
     if not hasattr(data_transformer, "fit") or not hasattr(data_transformer, "transform"):
-        raise ValueError("Expected a transformer instance with 'fit' and 'transform' methods.")
+        raise ValueError(
+            "Expected a transformer instance with 'fit' and 'transform' methods."
+            + f"Provided transformer '{type(data_transformer).__name__}' does not have these methods."
+        )
+
+
+def _resampler_validator(resampler: object) -> None:
+    """Imbalanced-learn style resampler validator"""
+    if isinstance(resampler, type):
+        raise TypeError(f"Expected a resampler instance, but got class {resampler.__name__}.")
+    if callable(resampler):
+        raise TypeError(f"Expected a resampler instance, but got function {resampler.__name__}.")  # type: ignore[attr-defined]
+    native_data_types = (int, float, str, bool, list, dict, tuple, set, bytes, type(None))
+    if type(resampler) in native_data_types:
+        raise TypeError(f"Expected a resampler instance, but got '{resampler}' with type '{type(resampler)}'.")
+    if not hasattr(resampler, "fit_resample"):
+        raise ValueError(
+            "Expected a resampler instance with a 'fit_resample' method."
+            + f"Provided resampler '{type(resampler).__name__}' does not have this method."
+        )
 
 
 def _classifier_validator(classifier: object) -> None:
@@ -726,7 +745,7 @@ def _pre_assembly_data_validator(
                 f"Missing data file path:\n{dpath}"
             )
         # Validate sample list data integrity
-        sample_list_i = load_vars(unc_path(dpath))["chain_res"]
+        sample_list_i = load_dill(unc_path(dpath))["chain_res"]
         try:
             _ = identity_assembly(sample_list_i)
         except Exception as e:

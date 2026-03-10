@@ -72,8 +72,8 @@ if __name__ == '__main__':
     # Combine feature selectors
     from sklearn.feature_selection import SelectKBest, f_classif
     from swectral.modelconnector import IdentityTransformer
-    from swectral import factorial_transformer_chains
-    models = factorial_transformer_chains(
+    from swectral import factorial_model_chains
+    models = factorial_model_chains(
         [SelectKBest(f_classif, k=5), IdentityTransformer()],
         estimators=[knn, rf], is_regression=False)
 

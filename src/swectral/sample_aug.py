@@ -5,6 +5,9 @@ Swectral - Pipeline sample augmentation methods / helpers
 Copyright (c) 2025 Siwei Luo. MIT License.
 """
 
+# Basics
+import warnings
+
 # Typing
 from typing import Optional, Union, Annotated, Any, Callable
 
@@ -14,6 +17,7 @@ import numpy as np
 # Raster
 from shapely.geometry import Polygon, MultiPolygon, box
 from shapely.ops import unary_union
+from shapely.prepared import prep
 
 # Local
 from .specio import simple_type_validator, arraylike_validator
@@ -73,6 +77,19 @@ def resample_roi(  # noqa: C901
     if not master_roi.is_valid:
         master_roi = master_roi.buffer(0)
 
+    # Check cell counts for mosaic resampling
+    n_cells = master_roi.area / resolution**2
+    if n_cells > 1000000:
+        warnings.warn(
+            f"High grid density detected ({int(n_cells)} cells). The computation could be slow."
+            "Consider increasing the resolution parameter if statistically unnecessary",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # Pre-compiling the geometry for spatial queries
+    prepared_roi = prep(master_roi)
+
     # Generate candidate squares strictly within the ROI
     min_x, min_y, max_x, max_y = master_roi.bounds
 
@@ -84,12 +101,21 @@ def resample_roi(  # noqa: C901
     x_coords = np.arange(min_x, stop_x, resolution)
     y_coords = np.arange(min_y, stop_y, resolution)
 
+    # TODO: changed
+    # candidate_squares = []
+    # for x in x_coords:
+    #     for y in y_coords:
+    #         square = box(x, y, x + resolution, y + resolution)
+    #         if prepared_roi.contains(square):
+    #             candidate_squares.append(square)
+    # TODO: vectorized computation instead
+    xv, yv = np.meshgrid(x_coords, y_coords)
+    potential_origins = np.stack([xv.ravel(), yv.ravel()], axis=-1)
     candidate_squares = []
-    for x in x_coords:
-        for y in y_coords:
-            square = box(x, y, x + resolution, y + resolution)
-            if master_roi.contains(square):
-                candidate_squares.append(square)
+    for x, y in potential_origins:
+        square = box(x, y, x + resolution, y + resolution)
+        if prepared_roi.contains(square):
+            candidate_squares.append(square)
 
     if len(candidate_squares) < 1:
         raise ValueError(f"Resolution {resolution} is too large, no square fit strictly within the provided ROI.")

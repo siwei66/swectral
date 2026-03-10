@@ -9,7 +9,7 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 from tqdm import tqdm
 
 # Typing
-from typing import Callable, Optional, Union, overload
+from typing import Callable, Optional, Union, overload, Any
 
 # Basic data
 import numpy as np
@@ -24,7 +24,7 @@ from shapely.geometry import Polygon
 import torch
 
 # Local
-from .specio import simple_type_validator, unc_path
+from .specio import simple_type_validator, unc_path, _wait_for_free_space, _safe_disk_wait
 
 
 # %% Crop ROI
@@ -33,7 +33,13 @@ from .specio import simple_type_validator, unc_path
 # Crop ROI from a raster image and save to a new image
 @simple_type_validator
 def croproi(
-    raster_path: str, roi_coordinates: list[list[tuple[Union[int, float], Union[int, float]]]], output_path: str
+    raster_path: str,
+    roi_coordinates: list[list[tuple[Union[int, float], Union[int, float]]]],
+    output_path: str,
+    # TODO: new
+    *,
+    _space_wait_timeout: int = 6,
+    _reserve_free_pct: float = 5.0,
 ) -> None:
     """
     Crop a region of interest (ROI) from a raster image and save croped region to a new image.
@@ -86,6 +92,19 @@ def croproi(
         )
 
         # Save the cropped raster
+        # Validate available disk space
+        raster_meta = out_meta.copy()
+        raster_meta["__specpipe_raster_meta_for_size_validation"] = True
+        # TODO: new
+        _wait_for_free_space(
+            obj=raster_meta,
+            path=unc_path(output_path),
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+            obj_size_buffer_coeff=1.05,
+        )
         with rasterio.open(unc_path(output_path), "w", **out_meta) as dst:
             dst.write(out_image)
 
@@ -431,6 +450,10 @@ def pixel_spec_apply(  # noqa: C901
     *,
     progress: bool = True,
     override: bool = True,
+    # TODO: new
+    _space_wait_timeout: int = 6,
+    _reserve_free_pct: float = 5.0,
+    _preprocess_status: Optional[dict[str, Any]] = None,
 ) -> None:
     """
     Apply a function to the 1D spectra of every pixel of a raster image.
@@ -476,6 +499,21 @@ def pixel_spec_apply(  # noqa: C901
             else:
                 meta.update({'compress': 'lzw'})
 
+        # Validate available disk space
+        raster_meta = meta.copy()
+        raster_meta["__specpipe_raster_meta_for_size_validation"] = True
+        # TODO: new
+        _safe_disk_wait(
+            obj=raster_meta,
+            path=unc_path(output_path),
+            preprocess_status=_preprocess_status,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+            obj_size_buffer_coeff=1.05,
+        )
+
         # Create dst raster
         with rasterio.open(unc_path(output_path), "w", **meta) as dst:
             # Get image dimensions
@@ -518,6 +556,10 @@ def pixel_array_apply(  # noqa: C901
     *,
     progress: bool = True,
     override: bool = True,
+    # TODO: new
+    _space_wait_timeout: int = 6,
+    _reserve_free_pct: float = 5.0,
+    _preprocess_status: Optional[dict[str, Any]] = None,
 ) -> None:
     """
     Apply a function to the 1D spectra of every pixel of a raster image.
@@ -566,6 +608,21 @@ def pixel_array_apply(  # noqa: C901
             else:
                 meta.update({'compress': 'lzw'})
 
+        # Validate available disk space
+        raster_meta = meta.copy()
+        raster_meta["__specpipe_raster_meta_for_size_validation"] = True
+        # TODO: new
+        _safe_disk_wait(
+            obj=raster_meta,
+            path=unc_path(output_path),
+            preprocess_status=_preprocess_status,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+            obj_size_buffer_coeff=1.05,
+        )
+
         # Create dst raster
         with rasterio.open(unc_path(output_path), "w", **meta) as dst:
             # Get image dimensions
@@ -610,6 +667,10 @@ def pixel_tensor_apply(  # noqa: C901
     *,
     progress: bool = True,
     override: bool = True,
+    # TODO: new
+    _space_wait_timeout: int = 6,
+    _reserve_free_pct: float = 5.0,
+    _preprocess_status: Optional[dict[str, Any]] = None,
 ) -> None:
     """
     Apply a function to the 1D spectra of every pixel of a raster image.
@@ -678,6 +739,21 @@ def pixel_tensor_apply(  # noqa: C901
             else:
                 meta.update({'compress': 'lzw'})
 
+        # Validate available disk space
+        raster_meta = meta.copy()
+        raster_meta["__specpipe_raster_meta_for_size_validation"] = True
+        # TODO: new
+        _safe_disk_wait(
+            obj=raster_meta,
+            path=unc_path(output_path),
+            preprocess_status=_preprocess_status,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+            obj_size_buffer_coeff=1.05,
+        )
+
         # Create output file with same number of bands
         with rasterio.open(unc_path(output_path), "w", **meta) as dst:
             # Get image dimensions
@@ -744,6 +820,10 @@ def pixel_tensor_hyper_apply(  # noqa: C901
     *,
     progress: bool = True,
     override: bool = True,
+    # TODO: new
+    _space_wait_timeout: int = 6,
+    _reserve_free_pct: float = 5.0,
+    _preprocess_status: Optional[dict[str, Any]] = None,
 ) -> None:
     """
     Apply a function to the 1D spectra of every pixel of a raster image, optimized for hyperspectral image data transfer.
@@ -816,6 +896,21 @@ def pixel_tensor_hyper_apply(  # noqa: C901
             else:
                 meta.update({'compress': 'lzw'})
 
+        # Validate available disk space
+        raster_meta = meta.copy()
+        raster_meta["__specpipe_raster_meta_for_size_validation"] = True
+        # TODO: new
+        _safe_disk_wait(
+            obj=raster_meta,
+            path=unc_path(output_path),
+            preprocess_status=_preprocess_status,
+            space_wait_timeout=_space_wait_timeout,
+            reserve_free_pct=_reserve_free_pct,
+            min_sec_random_wait=5.0,
+            max_sec_random_wait=5.0,
+            obj_size_buffer_coeff=1.05,
+        )
+
         with rasterio.open(unc_path(output_path), "w", **meta) as dst:
             for row_start in tqdm(range(0, src.height, row_chunk), disable=not progress):
                 # Read entire row chunk [C, row_chunk, W]
@@ -865,6 +960,10 @@ def pixel_apply(
     progress: bool = True,
     return_output_path: bool = True,
     override: bool = True,
+    # TODO: new
+    _space_wait_timeout: int = 6,
+    _reserve_free_pct: float = 5.0,
+    _preprocess_status: Optional[dict[str, Any]] = None,
 ) -> Optional[str]:
     """
     Apply a function to process the 1D spectra of every pixel of a raster image.
@@ -1014,6 +1113,9 @@ def pixel_apply(
             tile_size,
             progress=progress,
             override=override,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
+            _preprocess_status=_preprocess_status,
         )
 
     # Array apply
@@ -1026,6 +1128,9 @@ def pixel_apply(
             tile_size,
             progress=progress,
             override=override,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
+            _preprocess_status=_preprocess_status,
         )
 
     # Tensor apply
@@ -1039,6 +1144,9 @@ def pixel_apply(
             "cuda",
             progress=progress,
             override=override,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
+            _preprocess_status=_preprocess_status,
         )
 
     # Hyper-tensor apply
@@ -1052,6 +1160,9 @@ def pixel_apply(
             "cuda",
             progress=progress,
             override=override,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
+            _preprocess_status=_preprocess_status,
         )
 
     # Else
