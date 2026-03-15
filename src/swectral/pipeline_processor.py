@@ -412,8 +412,8 @@ def _preprocessing_sample(  # noqa: C901
         for chain in chains:
             if len(chain) != chain_length:
                 raise ValueError(
-                    f"Inconsistent steps of processing in chain: {chain} \
-                        \nExpected number of steps: {chain_length}, got: {len(chain)}"
+                    f"Inconsistent steps of processing in chain: {chain}"
+                    f"\nExpected number of steps: {chain_length}, got: {len(chain)}"
                 )
 
         # Chains
@@ -551,8 +551,8 @@ def _preprocessing_sample(  # noqa: C901
             return status_results_out
             if not return_step_result:
                 raise warnings.warn(
-                    "When dump_result is False, \
-                        the result is always returned and the return_step_result argument is ignored.",
+                    "When dump_result is False, "
+                    "the result is always returned and the return_step_result argument is ignored.",
                     UserWarning,
                     stacklevel=3,
                 )
@@ -694,8 +694,8 @@ def _chain_step_processor(  # noqa: C901
                         method_item_tuple[1:5] + (method_item_tuple[5].__class__.__name__,) + method_item_tuple[6:8]
                     )
                     raise ValueError(
-                        f"\nTest failed for chain: \nChain index: {chain_ind}, \nChain: {chain};\
-                            \n\nProcess ID: {step}, \nProcess item: {method_item_out}\n\n"
+                        f"\nTest failed for chain: \nChain index: {chain_ind}, \nChain: {chain};"
+                        f"\n\nProcess ID: {step}, \nProcess item: {method_item_out}\n\n"
                     ) from e
 
             # Update step_procs reference for next iteration
@@ -1623,8 +1623,8 @@ def _model_evaluator(  # noqa: C901
     if sample_list_label == "":
         if update_progress_log:
             raise ValueError(
-                "Consistent and unique preprocessing chain label (sample_list_label) must be provided \
-                    if update_progress_log set True for enabling break resuming."
+                "Consistent and unique preprocessing chain label (sample_list_label) must be provided "
+                "if update_progress_log set True for enabling break resuming."
             )
         sample_list_label = str(time.time_ns())[4:-2] + str(os.getpid())
 
@@ -1634,8 +1634,8 @@ def _model_evaluator(  # noqa: C901
             raise ValueError(f"Model process must have output data level of 'model', but got: '{procit[3]}'")
         if not callable(procit[-3]):
             raise ValueError(
-                f"Invalid model evaluation method, \
-                    given method is not callable : {procit[-3]}, got type : {type(procit[-3])}"
+                "Invalid model evaluation method, "
+                f"given method is not callable : {procit[-3]}, got type : {type(procit[-3])}"
             )
 
     # Save preprocess chain info for the sample_list
@@ -1667,9 +1667,9 @@ def _model_evaluator(  # noqa: C901
             input_dshape = sample_list_shape
         elif np.prod(sample_list_shape) != np.prod(input_dshape):
             raise ValueError(
-                f"Cannot reshape sample data with shape {sample_list_shape} \
-                    into specified input data shape {input_dshape} of the model.\
-                    \nInput step data ID: {sample_list[0]}\nModel label: {modelit[1]}"
+                f"Cannot reshape sample data with shape {sample_list_shape} "
+                f"into specified input data shape {input_dshape} of the model."
+                f"\nInput step data ID: {sample_list[0]}\nModel label: {modelit[1]}"
             )
         # Modeling
         # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501

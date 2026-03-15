@@ -381,8 +381,8 @@ class SpecExp:
             ]
         else:
             raise ValueError(
-                f"Given sample labels and existed sample labels do not match\n\n\
-                    Got sample labels:\n{idv_list},\n\nexisted sample labels:\n{ids_list}"
+                "Given sample IDs and existed sample IDs do not match\n\n"
+                f"Got sample IDs:\n{idv_list},\n\nexisted sample IDs:\n{ids_list}"
             )
         self._sample_labels = new_lbs
         # Update labels in sample_targets
@@ -449,13 +449,19 @@ class SpecExp:
         labels = set(labels_list)
         if ("-" in labels) or ("-" in labelv):
             if "-" in labels:
-                warn_msg = f"\nExisted sample labels are not provided or incomplete.\
-                    \nGot labels:\n{labels_list}\nThe target values are matched by order of samples.\n"
-                warnings.warn(warn_msg, UserWarning, stacklevel=2)
+                warnings.warn(
+                    "\nExisted sample labels are not provided or incomplete:"
+                    f"\n{labels_list}\nThe target values are matched by order of samples.\n",
+                    UserWarning,
+                    stacklevel=2,
+                )
             if "-" in labelv:
-                warn_msg = f"\nGiven sample labels of target values are incomplete:\
-                    \n{labelv_list}\nThe target values are matched by order of samples.\n"
-                warnings.warn(warn_msg, UserWarning, stacklevel=2)
+                warnings.warn(
+                    "\nGiven sample labels of target values are incomplete:"
+                    f"\n{labelv_list}\nThe target values are matched by order of samples.\n",
+                    UserWarning,
+                    stacklevel=2,
+                )
             # Sample values
             # sample_targets: [0 fixed sample id, 1 user assinged labels, 2 target values, 3 sample belonging group, 4 validation group, 5 test mask, 6 train mask]  # noqa: E501
             sample_targets = [
@@ -480,8 +486,8 @@ class SpecExp:
             ]
         else:
             raise ValueError(
-                f"Given sample labels and existed sample labels do not match\n\n\
-                    Got sample labels:\n{list(labelv)},\n\nexisted sample labels:\n{list(labels)}"
+                f"Given sample labels and existed sample labels do not match\n\n"
+                f"Got sample labels:\n{list(labelv)},\n\nexisted sample labels:\n{list(labels)}"
             )
 
         self._sample_targets = sample_targets
@@ -518,8 +524,8 @@ class SpecExp:
     @images.setter
     def images(self, value: list[tuple[str, str, str, str, str]]) -> None:
         raise ValueError(
-            "images cannot be modified directly, \
-                use method 'add_images_by_name', 'add_images_by_path' and 'rm_images' instead"
+            "images cannot be modified directly, "
+            "use method 'add_images_by_name', 'add_images_by_path' and 'rm_images' instead"
         )
 
     @property
@@ -529,8 +535,8 @@ class SpecExp:
     @images_data.setter
     def images_data(self, value: list[tuple[str, str, str, str, str]]) -> None:
         raise ValueError(
-            "images_data cannot be modified directly, \
-                use method 'add_images_by_name', 'add_images_by_path' and 'rm_images' instead"
+            "images_data cannot be modified directly, "
+            "use method 'add_images_by_name', 'add_images_by_path' and 'rm_images' instead"
         )
 
     @property
@@ -540,8 +546,8 @@ class SpecExp:
     @images_mask.setter
     def images_mask(self, value: list[tuple[str, str, str, str, str]]) -> None:
         raise ValueError(
-            "images_mask cannot be modified directly, \
-                use method 'add_images_by_name', 'add_images_by_path' and 'rm_images' instead"
+            "images_mask cannot be modified directly, "
+            "use method 'add_images_by_name', 'add_images_by_path' and 'rm_images' instead"
         )
 
     @property
@@ -556,8 +562,8 @@ class SpecExp:
         value: list[tuple[str, str, str, str, str, list[list[tuple[Union[int, float], Union[int, float]]]], str, str]],
     ) -> None:
         raise ValueError(
-            "rois_from_file cannot be modified directly, \
-                use method 'add_rois_by_suffix', 'add_rois_by_file' and 'rm_rois' instead"
+            "rois_from_file cannot be modified directly, "
+            "use method 'add_rois_by_suffix', 'add_rois_by_file' and 'rm_rois' instead"
         )
 
     @property
@@ -615,8 +621,8 @@ class SpecExp:
     @standalone_specs.setter
     def standalone_specs(self, value: list[tuple[str, str, str, str, list[Union[float, int]]]]) -> None:
         raise ValueError(
-            "SpecExp.standalone_specs cannot be modified directly, \
-                use method 'add_standalone_specs' and 'rm_standalone_specs' instead"
+            "SpecExp.standalone_specs cannot be modified directly, "
+            "use method 'add_standalone_specs' and 'rm_standalone_specs' instead"
         )
 
     @property
@@ -626,8 +632,8 @@ class SpecExp:
     @standalone_specs_sample.setter
     def standalone_specs_sample(self, value: list[tuple[str, str, str, str, list[Union[float, int]]]]) -> None:
         raise ValueError(
-            "SpecExp.standalone_specs_sample cannot be modified directly, \
-                use method 'add_standalone_specs' and 'rm_standalone_specs' instead"
+            "SpecExp.standalone_specs_sample cannot be modified directly, "
+            "use method 'add_standalone_specs' and 'rm_standalone_specs' instead"
         )
 
     ### DATA FILE MANAGEMENT METHODS
@@ -912,17 +918,23 @@ class SpecExp:
             raise ValueError("missing 1 required argument: 'group_name'")
 
         if group_name not in self._groups:
-            warn_msg = f"\nGroup: {group_name} does not exists, \
-                {group_name} is automatically added to experiment groups.\n"
-            warnings.warn(warn_msg, UserWarning, stacklevel=2)
+            warnings.warn(
+                f"\nGroup: {group_name} does not exists, "
+                "{group_name} is automatically added to experiment groups.\n",
+                UserWarning,
+                stacklevel=2,
+            )
             self._groups.append(group_name)
 
         ## Path list mode
         if image_full_path is not None:
             if image_name is not None:
-                warn_msg = "\nDouble definition of name pattern and paths. \
-                    The images are added by paths ignoring name pattern.\n"
-                warnings.warn(warn_msg, UserWarning, stacklevel=2)
+                warnings.warn(
+                    "\nDouble definition of name pattern and paths. "
+                    "The images are added by paths ignoring name pattern.\n",
+                    UserWarning,
+                    stacklevel=2,
+                )
             # Construct path list
             if type(image_full_path) is str:
                 image_path_list: list[str] = [image_full_path]
@@ -1688,8 +1700,8 @@ class SpecExp:
             raise ValueError(f"No image with name '{image_name}' added in given group '{group_name}'.")
         if len(existed_images) > 1:
             raise ValueError(
-                f"Duplicated image with name '{image_name}' found in given group '{group_name}': \
-                             {existed_images}. Image name must be unique in a group."
+                f"Duplicated image with name '{image_name}' found in given group '{group_name}': "
+                f"{existed_images}. Image name must be unique in a group."
             )
 
         # Parsing ROI files
@@ -2354,8 +2366,8 @@ class SpecExp:
                 raise ValueError(f"No image with name '{image_name}' added in given group '{group_name}'.")
             if len(existed_images) > 1:
                 raise ValueError(
-                    f"Duplicated image with name '{image_name}' found in given group '{group_name}': \
-                                 {existed_images}. Image name must be unique in a group."
+                    f"Duplicated image with name '{image_name}' found in given group '{group_name}': "
+                    f"{existed_images}. Image name must be unique in a group."
                 )
 
         # ROI type
@@ -3583,8 +3595,8 @@ class SpecExp:
         if n_processor > 1:
             if os.name == "nt":
                 warnings.warn(
-                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__': \n\n\
-                    Please make sure all of your main codes in the script are placed within this block.",
+                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__': \n\n"
+                    "Please make sure all of your main codes in the script are placed within this block.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -3826,9 +3838,9 @@ class SpecExp:
             # Validate length
             if len(sample_names) != len(spec_data):
                 raise ValueError(
-                    f"Inconsistent sample numbers in spec_data and sample_names,\
-                        \nsample number in spec_data: {len(spec_data)},\
-                        \nsample number in sample_names: {len(spec_data)}"
+                    "Inconsistent sample numbers in spec_data and sample_names, "
+                    f"\nsample number in spec_data: {len(spec_data)}, "
+                    f"\nsample number in sample_names: {len(spec_data)}"
                 )
             else:
                 # Validate uniqueness
@@ -3873,8 +3885,8 @@ class SpecExp:
         if len(self._standalone_specs) > 0:
             if splen != len(self._standalone_specs[0][4]):
                 raise ValueError(
-                    f"Given spectral data has inconsistent number of bands with existed standalone spectra,\
-                        \ngot: {splen}, \nexisted: {len(self._standalone_specs[0][4])}"
+                    "Given spectral data has inconsistent number of bands with existed standalone spectra, "
+                    f"got: {splen}, \nexisted: {len(self._standalone_specs[0][4])}"
                 )
 
         # Added spec samples
@@ -3997,8 +4009,8 @@ class SpecExp:
             print(f"\nStandalone spectra are saved in: \n\n{wpath}Standalone_spectra_{self._create_time}.csv\n")
             if save_backup:
                 print(
-                    f"\nStandalone spectra backup are saved as:\
-                        \n\n{wpath}Standalone_spectra_{self._create_time}_backup_{cts}.csv\n"
+                    "\nStandalone spectra backup are saved as:"
+                    f"\n\n{wpath}Standalone_spectra_{self._create_time}_backup_{cts}.csv\n"
                 )
 
     # Add standalone spectrum samples
@@ -4056,8 +4068,8 @@ class SpecExp:
         coln = coln_n + coln_d
         if list(df_sspecs.columns) != coln:
             raise ValueError(
-                f"Column names must be ['ID', 'Group', 'Use_type', 'Sample_name', 'Band_1', 'Band_2',...].\
-                    \n\nExpected: {coln} \n\nGot: \n{list(df_sspecs.columns)}"
+                "Column names must be ['ID', 'Group', 'Use_type', 'Sample_name', 'Band_1', 'Band_2',...]."
+                f"\n\nExpected: {coln} \n\nGot: \n{list(df_sspecs.columns)}"
             )
 
         # Validate datatype
@@ -4437,8 +4449,7 @@ class SpecExp:
             sid_group_arr = np.array([roit[0:2] for roit in self.standalone_specs_sample])
         elif len(self.rois_sample) == 0 and len(self.standalone_specs_sample) == 0:
             raise ValueError(
-                "No sample is added. \
-                    At least one of sample ROI and sample standalone spectra must be added."
+                "No sample is added. " "At least one of sample ROI and sample standalone spectra must be added."
             )
         else:
             sid_group_arr = np.array(
@@ -5107,8 +5118,8 @@ class SpecExp:
                 dump_path1 = dump_path1_sp[0] + cs + dump_path1_sp[1]
                 if ci > 99:
                     raise ValueError(
-                        "Too many file copies are being created for ExpSpec configuration data, \
-                            copy file creation rate limited to 100 per second."
+                        "Too many file copies are being created for ExpSpec configuration data, "
+                        "copy file creation rate limited to 100 per second."
                     )
             # Dump
             # TODO: changed

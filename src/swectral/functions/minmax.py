@@ -15,7 +15,7 @@ from ..specio import arraylike_validator, simple_type_validator
 
 
 @simple_type_validator
-def minmax(data: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:
+def minmax(data: Annotated[Any, arraylike_validator()]) -> np.ndarray:
     """
     MinMax (MinMax Normalization) function.
 
@@ -39,8 +39,8 @@ def minmax(data: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:
 
     Parameters
     ----------
-    data : 2D array-like (n_samples, n_bands)
-        Two-dimensional array-like spectral data to be processed.
+    data : 2D array-like (n_samples, n_bands) or 1D array-like (n_bands,)
+        1D or 2D array-like spectral data to be processed.
 
     Returns
     -------
@@ -66,9 +66,17 @@ def minmax(data: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:
     import numpy as np  # noqa: W291
 
     data = np.asarray(data)
-    vmin = np.nanmin(data, axis=1, keepdims=True)
-    vmax = np.nanmax(data, axis=1, keepdims=True)
-    minmax_values = (data - vmin) / (vmax - vmin + 1e-15)
+
+    if data.ndim == 2:
+        vmin = np.nanmin(data, axis=1, keepdims=True)
+        vmax = np.nanmax(data, axis=1, keepdims=True)
+        minmax_values = (data - vmin) / (vmax - vmin + 1e-15)
+    elif data.ndim == 1:
+        vmin = np.nanmin(data)
+        vmax = np.nanmax(data)
+        minmax_values = (data - vmin) / (vmax - vmin + 1e-15)
+    else:
+        raise ValueError(f"Expected 1D or 2D array-like, got dimension: {data.ndim}")
 
     result: np.ndarray = np.asarray(minmax_values)
 

@@ -581,8 +581,7 @@ def _process_validator(  # noqa: C901
                 except Exception as e:
                     assert hasattr(method, '__name__')
                     raise ValueError(
-                        f"Failed to open resulting raster image of {method.__name__}.\
-                            \nGot path:\n{result}\n"
+                        f"Failed to open resulting raster image of {method.__name__}." f"\nGot path:\n{result}\n"
                     ) from e
             else:
                 raise ValueError(f"Resulting file path is invalid: {result}")

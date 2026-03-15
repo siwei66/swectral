@@ -70,8 +70,8 @@ def chain_sample_group_stats(  # noqa: C901
     cind = str(sdata_path_name).split("_")[-1]
     if cind != str(preprocessing_chain_index):
         raise ValueError(
-            f"Got inconsistent 'preprocessing_chain_index' in provided data path: {sample_data_path}, \
-            \nExpected: {preprocessing_chain_index}, Got: {cind}"
+            f"Got inconsistent 'preprocessing_chain_index' in provided data path: {sample_data_path}, "
+            f"\nExpected: {preprocessing_chain_index}, Got: {cind}"
         )
     # Sample target path
     if not os.path.exists(unc_path(sample_target_path)):
@@ -432,33 +432,53 @@ def sample_group_stats(  # noqa: C901
 # %% Process ID label converters
 
 
-def process_id_to_label(process_id: str, process_config_df: pd.DataFrame, ignore: bool = False) -> str:
+def process_id_label_lookup_dict(process_config_df: pd.DataFrame) -> tuple[dict[str, str], dict[str, str]]:
+    """
+    Generate process ID to label and label to ID lookup dictionaries.
+    Prioritize custom process label to method name.
+    """
+
+    # Validate ID / label duplication
+    df_process = process_config_df
+    duplicate_ids = df_process.loc[df_process.duplicated(subset=['ID']), 'ID']
+    if len(duplicate_ids) > 0:
+        raise ValueError(f"Found duplicated IDs: {duplicate_ids.unique().tolist()}")
+    duplicate_labels = df_process.loc[df_process.duplicated(subset=['Process_label']), 'Process_label'].dropna()
+    if len(duplicate_labels) > 0:
+        raise ValueError(f"Found duplicated labels: {duplicate_labels.unique().tolist()}")
+
+    # Construct label-ID lookup dictionaries
+    df_proc = process_config_df.copy()
+    df_proc["Final_label"] = df_proc["Process_label"].combine_first(df_proc["Method"])
+    duplicate_flabels = df_proc.loc[df_proc.duplicated(subset=['Final_label']), 'Final_label']
+    if len(duplicate_flabels) > 0:
+        raise ValueError(f"Found duplicated labels: {duplicate_flabels.unique().tolist()}")
+    proc_id_to_label: dict = dict(zip(df_proc["ID"], df_proc["Final_label"]))
+    proc_label_to_id: dict = dict(zip(df_proc["Final_label"], df_proc["ID"]))
+
+    return (proc_id_to_label, proc_label_to_id)
+
+
+def process_id_to_label(process_id: str, proc_id_to_label: dict, ignore: bool = False) -> str:
     """
     Convert unique SpecPipe process ID to process label. If ignore True, return input if input is not id.
     "process_config_df" is the SpecPipe_added_process.csv in the configuration subdir.
     """
-    # Old version for df_proc -> removed preventing repeating read
-    # config_dir = (pipeline_config_dir + "/").replace("//", "/")
-    # df_proc = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
-    df_proc = process_config_df
-    process_labels = list(df_proc["Method"][df_proc["ID"] == process_id])
-    if not ignore:
-        if len(process_labels) < 1:
-            raise ValueError(f"No label found for given process ID: {process_id}")
-        return str(process_labels[0])
+    if process_id in proc_id_to_label.keys():
+        process_label = str(proc_id_to_label[process_id])
+        return process_label
+    elif not ignore:
+        raise ValueError(f"No process label or method name found for given ID: {process_id}")
     else:
-        if len(process_labels) < 1:
-            return process_id
-        else:
-            return str(process_labels[0])
+        return process_id
 
 
-def process_label_to_id(process_label: str, process_config_df: pd.DataFrame) -> str:
+def process_label_to_id(process_label: str, proc_label_to_id: dict) -> str:
     """
     Convert unique SpecPipe process label to process ID.
     "process_config_df" is the SpecPipe_added_process.csv in the configuration subdir.
     """
-    # Validate if ID
+    # Validate whether the process_label is ID, return if it's ID
     if "_%#" in process_label:
         process_label1 = process_label.replace("_%#", "_")
         splited_proc = process_label1.split("_")
@@ -472,20 +492,11 @@ def process_label_to_id(process_label: str, process_config_df: pd.DataFrame) -> 
         except Exception:
             pass
 
-    # Convert label to ID
-    # Old version for df_proc -> removed preventing repeating read
-    # config_dir = (pipeline_config_dir + "/").replace("//", "/")
-    # df_proc = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
-    df_proc = process_config_df
-    process_ids = list(df_proc["ID"][df_proc["Method"] == process_label])
-    if len(process_ids) > 1:
-        raise ValueError(
-            f"Multiple process IDs for the given label '{process_label}': {process_ids}, \
-                         label to convert to ID must be unique."
-        )
-    if len(process_ids) < 1:
+    if process_label in proc_label_to_id.keys():
+        process_id = str(proc_label_to_id[process_label])
+        return process_id
+    else:
         raise ValueError(f"No process ID found for given label: {process_label}")
-    return str(process_ids[0])
 
 
 # %% Model performance summary and marginal performance statistics
@@ -528,6 +539,11 @@ def performance_metrics_summary(  # noqa: C901
     report_dir = (model_evaluation_report_dir.replace("\\", "/") + "/").replace("//", "/")
     # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
     process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
+
+    # Construct label-ID lookup dictionaries
+    proc_id_to_label: dict[str, str]
+    proc_label_to_id: dict[str, str]
+    proc_id_to_label, proc_label_to_id = process_id_label_lookup_dict(process_config_df)
 
     # Chains path
     chains_id_path = config_dir + "SpecPipe_exec_chains_in_ID.csv"
@@ -611,8 +627,8 @@ def performance_metrics_summary(  # noqa: C901
             chain_txt = chain_txt_found[0]
         else:
             raise ValueError(
-                f"None or multiple preprocessing chain file found for 'Preprocessing_#{chain_num}', \
-                    got chain file names: {chain_txt_names}"
+                f"None or multiple preprocessing chain file found for 'Preprocessing_#{chain_num}', "
+                f"got chain file names: {chain_txt_names}"
             )
         # Get preprocessing chain
         with open(unc_path(report_dir + chain_txt), "r", encoding="utf-8") as f:
@@ -624,8 +640,8 @@ def performance_metrics_summary(  # noqa: C901
     # Validate results and configuration consistency
     if set(config_chains) != set(result_chains_dir_map.keys()):
         raise ValueError(
-            f"Pipeline model evaluation reports imply inconsistent processing chains with pipeline configurations:\n\
-            Configured chains:\n{config_chains},\nReport implied chains:\n{result_chains_dir_map.keys()}\n"
+            f"Pipeline model evaluation reports imply inconsistent processing chains with pipeline configurations:\n"
+            f"Configured chains:\n{config_chains},\nReport implied chains:\n{result_chains_dir_map.keys()}\n"
         )
 
     # Reorder chains to match configuration
@@ -646,13 +662,13 @@ def performance_metrics_summary(  # noqa: C901
         # Validate result chain - all item to process IDs
         result_chain1 = []
         for proc_item in result_chain:
-            result_chain1.append(process_label_to_id(proc_item, process_config_df))
+            result_chain1.append(process_label_to_id(proc_item, proc_label_to_id))
         result_chain = tuple(result_chain1)
         # Metrics directory
         metrics_dir = f"{report_dir}{dir_name}/"
         # Save processes of the full chain
         cprocs_in_id = result_chain1
-        cprocs_in_label = [process_id_to_label(proc_id, process_config_df) for proc_id in cprocs_in_id]
+        cprocs_in_label = [process_id_to_label(proc_id, proc_id_to_label) for proc_id in cprocs_in_id]
         df_cprocs = pd.DataFrame({"Chain_in_process_ID": cprocs_in_id, "Chain_in_process_label": cprocs_in_label})
         # Dump dill (swectral private)
         dill_result_path = metrics_dir + ".__swectral_dill_data/.__swectral_core_result_Chain_process_info.dill"
@@ -783,6 +799,11 @@ def regression_performance_marginal_stats(  # noqa: C901
     # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
     process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
 
+    # Construct label-ID lookup dictionaries
+    proc_id_to_label: dict[str, str]
+    proc_label_to_id: dict[str, str]
+    proc_id_to_label, proc_label_to_id = process_id_label_lookup_dict(process_config_df)
+
     # Compute and output marginal perf stats of each step
     marginal_performance_stats: dict = {}
     print("\nAnalyze marginal performance...")
@@ -812,7 +833,7 @@ def regression_performance_marginal_stats(  # noqa: C901
             if pid1 == 'All':
                 matrix_r2[0, col_idx] = "All"
             else:
-                label_val = process_id_to_label(pid1, process_config_df, ignore=(not validate_process))
+                label_val = process_id_to_label(pid1, proc_id_to_label, ignore=(not validate_process))
                 matrix_r2[0, col_idx] = label_val
 
             # Stats rows
@@ -929,6 +950,11 @@ def classification_performance_marginal_stats(  # noqa: C901
     # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
     process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
 
+    # Construct label-ID lookup dictionaries
+    proc_id_to_label: dict[str, str]
+    proc_label_to_id: dict[str, str]
+    proc_id_to_label, proc_label_to_id = process_id_label_lookup_dict(process_config_df)
+
     # Compute and output marginal perf stats of each step
     marginal_performance_stats: dict = {}
     print("\nAnalyze marginal performance...")
@@ -958,7 +984,7 @@ def classification_performance_marginal_stats(  # noqa: C901
                 matrix_macauc[0, col_idx] = "All"
                 matrix_micauc[0, col_idx] = "All"
             else:
-                label_val = process_id_to_label(pid1, process_config_df, ignore=(not validate_process))
+                label_val = process_id_to_label(pid1, proc_id_to_label, ignore=(not validate_process))
                 matrix_macauc[0, col_idx] = label_val
                 matrix_micauc[0, col_idx] = label_val
 

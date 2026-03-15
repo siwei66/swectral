@@ -9,6 +9,8 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 import os
 import sys
 
+# from copy import deepcopy
+
 # Initialize LOKY_MAX_CPU_COUNT if it does not exist before imports to prevent corresponding warning
 os.environ.setdefault('LOKY_MAX_CPU_COUNT', '1')
 
@@ -64,6 +66,12 @@ except ImportError:
 
 # Image to image
 def original_img(input_path: str, output_path: str) -> str:
+    shutil.copyfile(input_path, output_path)
+    return output_path
+
+
+# Image to image
+def original_img1(input_path: str, output_path: str) -> str:
     shutil.copyfile(input_path, output_path)
     return output_path
 
@@ -160,8 +168,8 @@ def create_test_spec_pipe(
     pipe.add_process(5, 6, 0, roispec)
     pipe.add_process(6, 7, 0, Stats2d().mean)
     # TODO: new
-    pipe.add_process(7, 8, 0, identity_assembly)
-    pipe.add_process(8, 8, 1, identity_assembly)
+    pipe.add_process(7, 8, 0, identity_assembly, process_label="exp_assem1")
+    pipe.add_process(8, 8, 1, identity_assembly, process_label="exp_assem2")
     if is_regression:
         # TODO: changed
         # pipe.add_process(7, 8, 0, RandomForestRegressor(n_estimators=6), validation_method=validation_method)
@@ -341,7 +349,7 @@ class TestSpecPipe(unittest.TestCase):
         assert pipe.process_chains == [("0_0_%#1", "1_1_%#1")]
 
         # Multiple process options
-        pipe.add_process(1, 1, 1, snv)
+        pipe.add_process(1, 1, 1, snv, process_label="snv1")
         # Correct process updating
         assert len(pipe.process) == 3
         for proc in pipe.process:
@@ -353,9 +361,9 @@ class TestSpecPipe(unittest.TestCase):
 
         # Sequential processes
         pipe = SpecPipe(test_exp)
-        pipe.add_process(1, 1, 0, snv)
-        pipe.add_process(1, 1, 1, snv)
-        pipe.add_process(1, 1, 2, snv)
+        pipe.add_process(1, 1, 0, snv, process_label="snv1")
+        pipe.add_process(1, 1, 1, snv, process_label="snv2")
+        pipe.add_process(1, 1, 2, snv, process_label="snv3")
         assert len(pipe.process) == 3
         assert pipe.process_steps == [["1_0_%#1"], ["1_1_%#1"], ["1_2_%#1"]]
         assert pipe.process_chains == [("1_0_%#1", "1_1_%#1", "1_2_%#1")]
@@ -385,16 +393,16 @@ class TestSpecPipe(unittest.TestCase):
             n_added = 7
 
         # TODO: Method of assembly data levels
-        pipe.add_process(7, 8, 0, identity_assembly)
+        pipe.add_process(7, 8, 0, identity_assembly, process_label='identity_assembly1')
         assert len(pipe.process) == n_added + 1
-        pipe.add_process(8, 8, 0, identity_assembly)
+        pipe.add_process(8, 8, 0, identity_assembly, process_label='identity_assembly2')
         assert len(pipe.process) == n_added + 2
 
         # Image levels cross-level parallel processes
         pipe = SpecPipe(test_exp)
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(1, 1, 0, snv)
-        pipe.add_process(1, 1, 0, snv)
+        pipe.add_process(1, 1, 0, snv, process_label="snv1")
         assert len(pipe.process) == 3
         assert pipe.process_steps == [["0_0_%#1", "1_0_%#2", "1_0_%#3"]]
         assert pipe.process_chains == [("0_0_%#1",), ("1_0_%#2",), ("1_0_%#3",)]
@@ -443,23 +451,23 @@ class TestSpecPipe(unittest.TestCase):
         pipe = SpecPipe(test_exp)
 
         # Add list of processes
-        pipe.add_process(0, 0, 0, [original_img, original_img])
+        pipe.add_process(0, 0, 0, [original_img, original_img1])
 
         # Add list of processes with labels
         pipe.add_process(0, 0, 1, [original_img, original_img], process_label=['process_label_a', 'process_label_b'])
 
         # Label type mismatch
         with pytest.raises(TypeError, match="must be a list of str with a length equal to the number of methods"):
-            pipe.add_process(0, 0, 2, [original_img, original_img], process_label='process_label_b')
+            pipe.add_process(0, 0, 2, [original_img, original_img1], process_label='process_label_c')
         # Label length mismatch
         with pytest.raises(ValueError, match="do not match"):
-            pipe.add_process(0, 0, 2, [original_img, original_img], process_label=['process_label_b'])
+            pipe.add_process(0, 0, 2, [original_img, original_img1], process_label=['process_label_d'])
 
         # Single element list
-        pipe.add_process(0, 0, 2, [original_img], process_label='process_label_b')
-        pipe.add_process(0, 0, 2, [original_img], process_label=['process_label_b'])
-        pipe.add_process(0, 0, 2, original_img, process_label=['process_label_b'])
-        pipe.add_process(0, 0, 2, original_img, process_label='process_label_b')
+        pipe.add_process(0, 0, 2, [original_img], process_label='original_img_2')
+        pipe.add_process(0, 0, 2, [original_img], process_label=['original_img_3'])
+        pipe.add_process(0, 0, 2, original_img, process_label=['original_img_4'])
+        pipe.add_process(0, 0, 2, original_img, process_label='original_img_5')
 
         # Add multiple models
         pipe.add_process(5, 7, 0, roi_mean)
@@ -484,13 +492,13 @@ class TestSpecPipe(unittest.TestCase):
         # Create test spec exp
         test_exp = create_test_spec_exp(test_dir)
         pipe = SpecPipe(test_exp)
-        pipe.add_process(0, 0, 0, original_img)
-        pipe.add_process(0, 0, 0, original_img)
-        pipe.add_process(0, 0, 1, original_img)
+        pipe.add_process(0, 0, 0, original_img, process_label="original_img1")
+        pipe.add_process(0, 0, 0, original_img, process_label="original_img2")
+        pipe.add_process(0, 0, 1, original_img, process_label="original_img3")
         pipe.add_process(1, 1, 2, snv)
-        pipe.add_process(2, 2, 3, arr_snv)
-        pipe.add_process(2, 2, 3, arr_snv)
-        pipe.add_process(2, 2, 3, arr_snv)
+        pipe.add_process(2, 2, 3, arr_snv, process_label="arr_snv1")
+        pipe.add_process(2, 2, 3, arr_snv, process_label="arr_snv2")
+        pipe.add_process(2, 2, 3, arr_snv, process_label="arr_snv3")
 
         # List all
         procs = pipe.ls_process(print_result=False, return_result=True)
@@ -528,9 +536,9 @@ class TestSpecPipe(unittest.TestCase):
         # Create test spec exp
         test_exp = create_test_spec_exp(test_dir)
         pipe = SpecPipe(test_exp)
-        pipe.add_process(0, 0, 0, original_img)
-        pipe.add_process(0, 0, 0, original_img)
-        pipe.add_process(0, 0, 1, original_img)
+        pipe.add_process(0, 0, 0, original_img, process_label="original_img1")
+        pipe.add_process(0, 0, 0, original_img, process_label="original_img2")
+        pipe.add_process(0, 0, 1, original_img, process_label="original_img3")
         pipe.add_process(1, 1, 2, snv)
         pipe.add_process(2, 2, 3, arr_snv)
 

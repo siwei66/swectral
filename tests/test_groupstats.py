@@ -38,6 +38,7 @@ from swectral.roistats import roi_mean, roi_median, roi_std
 from swectral.groupstats import (
     chain_sample_group_stats,
     sample_group_stats,
+    process_id_label_lookup_dict,
     process_id_to_label,
     process_label_to_id,
     performance_metrics_summary,
@@ -284,23 +285,24 @@ class TestGroupStats(unittest.TestCase):
         """Test 'process_id_to_label' and 'process_label_to_id' functionality."""
         config_dir = self.test_dir + "SpecPipe_configuration/"
         process_config_df = pd.read_csv(config_dir + "SpecPipe_added_process.csv")
+        proc_id_to_label, proc_label_to_id = process_id_label_lookup_dict(process_config_df)
         chain_proc_id, chain_proc_lab = self.spec_pipe_reg.ls_chains(print_label=False, return_label=True)
         for r in range(chain_proc_id.shape[0]):
             for c in range(chain_proc_id.shape[1]):
                 cpid = chain_proc_id.iloc[r, c]
                 cplab = chain_proc_lab.iloc[r, c]
                 # process_id_to_label
-                assert process_id_to_label(cpid, process_config_df) == cplab
+                assert process_id_to_label(cpid, proc_id_to_label) == cplab
                 # process_label_to_id
-                assert process_label_to_id(cplab, process_config_df) == cpid
+                assert process_label_to_id(cplab, proc_label_to_id) == cpid
 
         # No item matched
         # process_id_to_label
-        with pytest.raises(ValueError, match="No label found"):
-            process_id_to_label("non_existed_id", process_config_df)
+        with pytest.raises(ValueError, match="No process label"):
+            process_id_to_label("non_existed_id", proc_id_to_label)
         # process_label_to_id
         with pytest.raises(ValueError, match="No process ID found"):
-            process_label_to_id("non_existed_label", process_config_df)
+            process_label_to_id("non_existed_label", proc_label_to_id)
 
     @silent
     def test_performance_metrics_summary(self) -> None:

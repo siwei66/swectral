@@ -15,7 +15,7 @@ from ..specio import arraylike_validator, simple_type_validator
 
 
 @simple_type_validator
-def snv(data: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:
+def snv(data: Annotated[Any, arraylike_validator()]) -> np.ndarray:
     """
     SNV (Standard Normal Variate) function.
 
@@ -39,8 +39,8 @@ def snv(data: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:
 
     Parameters
     ----------
-    data : 2D array-like (n_samples, n_bands)
-        Two-dimensional array-like spectral data to be processed.
+    data : 2D array-like (n_samples, n_bands) or 1D array-like (n_bands,)
+        1D or 2D array-like spectral data to be processed.
 
     Returns
     -------
@@ -66,9 +66,17 @@ def snv(data: Annotated[Any, arraylike_validator(ndim=2)]) -> np.ndarray:
     import numpy as np  # noqa: W291
 
     data = np.asarray(data)
-    vmean = np.nanmean(data, axis=1, keepdims=True)
-    vstd = np.nanstd(data, axis=1, keepdims=True)
-    snv_values = (data - vmean) / (vstd + 1e-15)
+
+    if data.ndim == 2:
+        vmean = np.nanmean(data, axis=1, keepdims=True)
+        vstd = np.nanstd(data, axis=1, keepdims=True)
+        snv_values = (data - vmean) / (vstd + 1e-15)
+    elif data.ndim == 1:
+        vmean = np.nanmean(data)
+        vstd = np.nanstd(data)
+        snv_values = (data - vmean) / (vstd + 1e-15)
+    else:
+        raise ValueError(f"Expected 1D or 2D array-like, got dimension: {data.ndim}")
 
     result: np.ndarray = np.asarray(snv_values)
 

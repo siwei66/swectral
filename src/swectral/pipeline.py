@@ -429,13 +429,13 @@ class SpecPipe:
             value = tuple(value)
             if self.__pretest_data is None:
                 raise ValueError(
-                    "Internal Error: 'SpecPipe._pretest_data' is None. \
-                        Pre-execution test data initialization fails. Please report."
+                    "Internal Error: 'SpecPipe._pretest_data' is None. "
+                    "Pre-execution test data initialization fails. Please report."
                 )
             if len(value) != len(self.__pretest_data["spec1d"]):
                 raise ValueError(
-                    f"The number of band wavelengths ({len(value)}) does not match \
-                        the number of bands ({len(self.__pretest_data['spec1d'])})."
+                    f"The number of band wavelengths ({len(value)}) does not match "
+                    f"the number of bands ({len(self.__pretest_data['spec1d'])})."
                 )
             v0: Union[int, float] = 0
             for v in value:
@@ -1803,6 +1803,44 @@ class SpecPipe:
                 influence_analysis_config=influence_analysis_config,
             )
 
+        # Validate label & method name uniqueness
+        # Validate label & method name duplication in added processes
+        existed_final_label = []
+        for proc in self.process:
+            if proc[1] == "":
+                if proc[3] == "model":
+                    assert hasattr(proc[5], "model_label")
+                    flabel = proc[5].model_label
+                else:
+                    assert hasattr(proc[5], "__name__")
+                    flabel = proc[5].__name__
+            else:
+                flabel = proc[1]
+            # Validate duplication
+            if flabel not in existed_final_label:
+                existed_final_label.append(flabel)
+            else:
+                raise ValueError(
+                    f"Process label or method name '{flabel}' duplicated, " "please set a unique custom label instead."
+                )
+        # Validate new process label or method name's potential duplication with existed processes
+        if process_label == "":
+            if dl_out_name == "model":
+                flabel = proc_method.model_label
+            else:
+                flabel = proc_method.__name__
+            if flabel in existed_final_label:
+                raise ValueError(
+                    f"Method name '{flabel}' found in the existed process labels or method names, "
+                    "please set a unique custom label instead."
+                )
+        else:
+            if process_label in existed_final_label:
+                raise ValueError(
+                    f"Process label '{process_label}' found in the existed process labels or method names, "
+                    "please set a unique custom label instead."
+                )
+
         # Add normalized process and update pipelines ------------------------------------------------------------------
         # Change process test status
         self.__tested = False
@@ -2093,8 +2131,8 @@ class SpecPipe:
                     df_proc.iloc[i, -3] = df_proc.iloc[i, -3].model_label
                 except Exception as e:
                     raise ValueError(
-                        f"\nInvalid processing method with type '{type(df_proc.iloc[i, -3])}' detected in process:\
-                            \n{df_proc.drop('Method', axis=1).iloc[i, :]}\n\n"
+                        f"\nInvalid processing method with type '{type(df_proc.iloc[i, -3])}' detected in process:"
+                        f"\n{df_proc.drop('Method', axis=1).iloc[i, :]}\n\n"
                     ) from e
         # Print simple df
         if print_result:
@@ -2264,8 +2302,8 @@ class SpecPipe:
                             df_proc.iloc[i, -3] = df_proc.iloc[i, -3].model_label
                         except Exception as e:
                             raise ValueError(
-                                f"\nInvalid processing method with type '{type(df_proc.iloc[i, -3])}' \
-                                    detected in process: \n{df_proc.drop('Method', axis=1).iloc[i, :]}\n\n"
+                                f"\nInvalid processing method with type '{type(df_proc.iloc[i, -3])}' "
+                                f"detected in process: \n{df_proc.drop('Method', axis=1).iloc[i, :]}\n\n"
                             ) from e
                 with pd.option_context("display.max_rows", None, "display.max_columns", None):
                     df_proc_simple = df_proc.iloc[:, [1, 2, 3, 4, 5]]
@@ -2400,8 +2438,8 @@ class SpecPipe:
             raise ValueError(f"Got invalid process ID '{process_id}', no corresponding process label found.")
         else:
             raise ValueError(
-                f"Process ID '{process_id}' has multiple label references: {proc_label_item[:, 1]}. \
-                    This indicates corrupted process data."
+                f"Process ID '{process_id}' has multiple label references: {proc_label_item[:, 1]}. "
+                f"This indicates corrupted process data."
             )
 
     # Build pipelines directly from structure ==========================================================================
@@ -2475,7 +2513,10 @@ class SpecPipe:
             input_data_level = _dl_val(step[0][0])[0]
             output_data_level = _dl_val(step[0][1])[0]
             if not (
-                (input_data_level == dl_in_p and output_data_level == dl_out_p) or (_dl_val(input_data_level)[0] <= 4)
+                # TODO: Duplicated ID bug fixes
+                # TODO: (input_data_level == dl_in_p and output_data_level >= dl_out_p) or (_dl_val(input_data_level)[0] <= 4)  # noqa: E501
+                (input_data_level == dl_in_p and output_data_level >= dl_out_p)
+                or (_dl_val(input_data_level)[0] <= 4)
             ):
                 dl_in_p = input_data_level
                 dl_out_p = output_data_level
@@ -2512,7 +2553,9 @@ class SpecPipe:
                     **params,
                 )
             # Update dl
-            if (input_data_level == dl_in_p and output_data_level == dl_out_p) or (_dl_val(input_data_level)[0] <= 4):
+            # TODO: Duplicated ID bug fixes
+            # TODO: if (input_data_level == dl_in_p and output_data_level == dl_out_p) or (_dl_val(input_data_level)[0] <= 4):  # noqa: E501
+            if (input_data_level == dl_in_p and output_data_level >= dl_out_p) or (_dl_val(input_data_level)[0] <= 4):
                 appseq = appseq + 1
 
     # List process chains ==============================================================================================
@@ -3054,8 +3097,8 @@ class SpecPipe:
 
         # Print output path
         print(
-            f"\nSpecPipe configurations saved to: \
-              {report_dir}SpecPipe_pipeline_configuration_{self.create_time}.dill\n"
+            "\nSpecPipe configurations saved to:\n"
+            f"{report_dir}SpecPipe_pipeline_configuration_{self.create_time}.dill\n"
         )
 
     # Alias
@@ -3217,8 +3260,8 @@ class SpecPipe:
             test_data: dict[str, Any] = copy.deepcopy(self.__pretest_data)
         else:
             raise ValueError(
-                "Internal Error: 'SpecPipe._pretest_data' is None. \
-                    Pre-execution test data initialization fails. Please report."
+                "Internal Error: 'SpecPipe._pretest_data' is None. "
+                "Pre-execution test data initialization fails. Please report."
             )
 
         # Preprocessed test image dir
@@ -3342,9 +3385,9 @@ class SpecPipe:
                         ts_shape = tsample.shape
                     elif np.prod(tsample.shape) != np.prod(ts_shape):
                         raise ValueError(
-                            f"Cannot reshape sample data with shape {tsample.shape} into specified input data shape \
-                                {ts_shape} of the model.\
-                                \nInput step data ID: {status_result[0]}\nModel label: {modelit[1]}"
+                            f"Cannot reshape sample data with shape {tsample.shape} into specified input data shape "
+                            f"{ts_shape} of the model."
+                            f"\nInput step data ID: {status_result[0]}\nModel label: {modelit[1]}"
                         )
 
                     # Save preprocess chain of sample_list
@@ -3647,18 +3690,19 @@ class SpecPipe:
         if n_processor > 1:
             if os.name == "nt":
                 print(
-                    "\n\n\n\
-                    >>> WARNING: Windows users must run multiprocessing within block \n\nif __name__ == '__main__':\
-                    \n\n Please make sure all of your main codes in the script are placed within this block. \n\n",
+                    "\n\n\n"
+                    ">>> WARNING: Windows users must run multiprocessing within block \n\nif __name__ == '__main__':"
+                    "\n\nPlease make sure all of your main codes in the script are placed within this block. \n\n",
                     file=sys.stderr,
                     flush=True,
                 )
                 time.sleep(2)
-                warn_msg = (
-                    "\nWindows users must run multiprocessing within block \n\nif __name__ == '__main__':"
-                    + "Please make sure all of your main codes in the script are placed within this block."
+                warnings.warn(
+                    "\nWindows users must run multiprocessing within block \n\nif __name__ == '__main__': \n\n\
+                    Please make sure all of your main codes in the script are placed within this block.",
+                    UserWarning,
+                    stacklevel=2,
                 )
-                warnings.warn(warn_msg, UserWarning, stacklevel=2)
 
         # Suppress NotGeoreferencedWarning
         if not geo_reference_warning:
@@ -3905,8 +3949,8 @@ class SpecPipe:
             # Validate returning path list
             if len(preprocess_result_paths) != len(rest_sample_data):
                 raise ValueError(
-                    f"\nIncomplete preprocessing results, expected number of results: {len(self._sample_data)}, \
-                        got: {len(preprocess_result_paths)}"
+                    f"\nIncomplete preprocessing results, expected number of results: {len(self._sample_data)}, "
+                    f"got: {len(preprocess_result_paths)}"
                 )
             for pti in preprocess_result_paths:
                 if type(pti) is not str:
@@ -4002,9 +4046,9 @@ class SpecPipe:
 
         else:
             raise ValueError(
-                "Hybrid samples from both standalone spectra and spectral images \
-                    is not allowed by SpecPipe pipeline.\
-                    \nPlease provide pure image ROI samples or standalone spectrum samples"
+                "Hybrid samples from both standalone spectra and spectral images"
+                "is not allowed by SpecPipe pipeline."
+                "\nPlease provide pure image ROI samples or standalone spectrum samples."
             )
 
     # Apply sample assembly process ====================================================================================
@@ -4084,17 +4128,17 @@ class SpecPipe:
         # Prompt "if __name__ == '__main__':" protection for windows multiprocessing
         if n_processor > 1:
             if os.name == "nt":
-                print(  # noqa: E501
-                    "\n\n\n\
-                    >>> WARNING: Windows users must run multiprocessing within block \n\nif __name__ == '__main__':\
-                    \n\n Please make sure all of your main codes in the script are placed within this block. \n\n",
+                print(
+                    "\n\n\n"
+                    ">>> WARNING: Windows users must run multiprocessing within block \n\nif __name__ == '__main__':"
+                    "\n\nPlease make sure all of your main codes in the script are placed within this block.\n\n",
                     file=sys.stderr,
                     flush=True,
                 )
                 time.sleep(2)
                 warnings.warn(
-                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__': \n\n\
-                    Please make sure all of your main codes in the script are placed within this block.",
+                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__':"
+                    "\n\nPlease make sure all of your main codes in the script are placed within this block.\n\n",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -4326,17 +4370,17 @@ class SpecPipe:
         # Prompt "if __name__ == '__main__':" protection for windows multiprocessing
         if n_processor > 1:
             if os.name == "nt":
-                print(  # noqa: E501
-                    "\n\n\n\
-                    >>> WARNING: Windows users must run multiprocessing within block \n\nif __name__ == '__main__':\
-                    \n\n Please make sure all of your main codes in the script are placed within this block. \n\n",
+                print(
+                    "\n\n\n"
+                    ">>> WARNING: Windows users must run multiprocessing within block \n\nif __name__ == '__main__':"
+                    "\n\nPlease make sure all of your main codes in the script are placed within this block.\n\n",
                     file=sys.stderr,
                     flush=True,
                 )
                 time.sleep(2)
                 warnings.warn(
-                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__': \n\n\
-                    Please make sure all of your main codes in the script are placed within this block.",
+                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__':"
+                    "\n\nPlease make sure all of your main codes in the script are placed within this block.\n\n",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -4437,10 +4481,6 @@ class SpecPipe:
                 + f"{list((spcs | spcf) - (spcs & spcf))}\n\n"
                 + f"Got preprocessing-assembly chain from instance: {pachains}\n\n"
                 + f"Got preprocessing-assembly chain from data file: {pachains_f}\n"
-                # TODO: debug
-                + f"\n\n assembly_chains:\n{assembly_chains}\n\n"
-                + f"\n\n n_step_choice:\n{n_step_choice}\n\n"
-                + f"\n\n cd_paths:\n{cd_paths}\n\n"
             )
 
         # Check running log and subset sample data file path to not-processed files
@@ -4528,8 +4568,10 @@ class SpecPipe:
                         cts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                         pid = os.getpid()
                         error_log_path = errdir + f"error_{cts}_pid_{pid}.log"
-                        err_msg = f"\nFailed in the modeling of preprocessing chain from path '{cdp}', \
-                                    error message: \n\n{str(e)}\n"
+                        err_msg = (
+                            f"\nFailed in the modeling of preprocessing chain from path '{cdp}', "
+                            + f"error message: \n\n{str(e)}\n"
+                        )
                         with open(unc_path(error_log_path), "w") as f:
                             f.write(err_msg)
                         raise ValueError(f"\nFailed in the modeling of preprocessing chain from path '{cdp}'") from e
@@ -4787,16 +4829,16 @@ class SpecPipe:
         if n_processor > 1:
             if os.name == "nt":
                 print(
-                    "\n\n\n\
-                    >>> WARNING: Windows users must run multiprocessing within block \n\nif __name__ == '__main__':\
-                    \n\n Please make sure all of your main codes in the script are placed within this block. \n\n",
+                    "\n\n\n"
+                    ">>> WARNING: Windows users must run multiprocessing within block \n\nif __name__ == '__main__':"
+                    "\n\nPlease make sure all of your main codes in the script are placed within this block.\n\n",
                     file=sys.stderr,
                     flush=True,
                 )
                 time.sleep(2)
                 warnings.warn(
-                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__': \n\n\
-                    Please make sure all of your main codes in the script are placed within this block.",
+                    "Windows users must run multiprocessing within block \n\nif __name__ == '__main__':"
+                    "\n\nPlease make sure all of your main codes in the script are placed within this block.\n\n",
                     UserWarning,
                     stacklevel=2,
                 )
