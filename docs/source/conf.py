@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath('../../src'))
 project = 'Swectral'
 copyright = '2025, Siwei Luo'
 author = 'Siwei Luo'
-release = '0.6.1'
+release = '0.6.2'
 
 # -- Sphinx extensions -------------------------------------------------------
 
