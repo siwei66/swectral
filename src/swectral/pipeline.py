@@ -774,6 +774,7 @@ class SpecPipe:
         residual_config: Union[str, dict[str, Any], None] = "default",
         residual_plot_config: Union[str, dict[str, Any], None] = "default",
         influence_analysis_config: Union[str, dict[str, Any], None] = "default",
+        save_application_model: bool = True,
     ) -> None:
         # TODO: edit docstring
         """
@@ -1042,6 +1043,10 @@ class SpecPipe:
 
             Default is ``"default"``, which uses the default influence analysis behavior.
 
+        save_application_model : bool, optional
+            Whether application model is trained on all data and stored in the chain report.
+            Default is True.
+
         See Also
         --------
         add_process
@@ -1111,6 +1116,7 @@ class SpecPipe:
             residual_config=residual_config,
             residual_plot_config=residual_plot_config,
             influence_analysis_config=influence_analysis_config,
+            save_application_model=save_application_model,
         )
 
     # List model - from ls_process
@@ -1318,6 +1324,7 @@ class SpecPipe:
         residual_config: Union[str, dict[str, Any], None] = "default",
         residual_plot_config: Union[str, dict[str, Any], None] = "default",
         influence_analysis_config: Union[str, dict[str, Any], None] = "default",
+        save_application_model: bool = True,
     ) -> None:
         # TODO: edit docstring
         """
@@ -1509,6 +1516,10 @@ class SpecPipe:
             Influence analysis configuration.
             See ``add_model`` for details.
 
+        save_application_model : bool, optional
+            Influence analysis configuration.
+            See ``add_model`` for details.
+
         See Also
         --------
         add_model
@@ -1615,6 +1626,7 @@ class SpecPipe:
                 residual_config=residual_config,
                 residual_plot_config=residual_plot_config,
                 influence_analysis_config=influence_analysis_config,
+                save_application_model=save_application_model,
             )
 
     # Add process
@@ -1647,6 +1659,7 @@ class SpecPipe:
         residual_config: Union[str, dict[str, Any], None] = "default",
         residual_plot_config: Union[str, dict[str, Any], None] = "default",
         influence_analysis_config: Union[str, dict[str, Any], None] = "default",
+        save_application_model: bool = True,
     ) -> None:
         """
         Add a single processing method with defined input/output data levels and application sequence to the pipeline.
@@ -1801,6 +1814,7 @@ class SpecPipe:
                 residual_config=residual_config,
                 residual_plot_config=residual_plot_config,
                 influence_analysis_config=influence_analysis_config,
+                save_application_model=save_application_model,
             )
 
         # Validate label & method name uniqueness

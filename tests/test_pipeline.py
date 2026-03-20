@@ -1360,6 +1360,14 @@ class TestSpecPipe(unittest.TestCase):
         rdir = f"{test_dir}Modeling/Model_evaluation_reports/"
         step_perf_sum_path = f"{rdir}Performance_summary.csv"
         assert os.path.exists(step_perf_sum_path)
+        # TODO: new summary value validation
+        # Validate summary values
+        df_summary = pd.read_csv(step_perf_sum_path)
+        assert not df_summary.isnull().any().any(), "Performance_summary.csv contains NaN"
+        report_subdir_names = df_summary["Result_subdirectory"].tolist()
+        for subdir in report_subdir_names:
+            full_path = os.path.join(rdir, subdir)
+            assert os.path.isdir(full_path), f"Invalid model evaluation report subdirectory: {full_path}"
         # Step marginal performance
         df_chains = pipe.ls_chains(print_label=False)
         for step in df_chains.columns:
@@ -1467,6 +1475,26 @@ class TestSpecPipe(unittest.TestCase):
         step_mic_sum_path = f"{rdir}Micro_avg_performance_summary.csv"
         assert os.path.exists(step_mac_sum_path)
         assert os.path.exists(step_mic_sum_path)
+        # TODO: new summary value validation
+        # Validate summary values
+        # Macro
+        df_summary = pd.read_csv(step_mac_sum_path)
+        assert not df_summary.isnull().any().any(), "Macro_avg_performance_summary.csv contains NaN"
+        report_subdir_names = df_summary["Result_subdirectory"].tolist()
+        for subdir in report_subdir_names:
+            full_path = os.path.join(rdir, subdir)
+            assert os.path.isdir(
+                full_path
+            ), f"Invalid model evaluation report subdirectory from Macro_avg_performance_summary: {full_path}"
+        # Micro
+        df_summary = pd.read_csv(step_mac_sum_path)
+        assert not df_summary.isnull().any().any(), "Micro_avg_performance_summary.csv contains NaN"
+        report_subdir_names = df_summary["Result_subdirectory"].tolist()
+        for subdir in report_subdir_names:
+            full_path = os.path.join(rdir, subdir)
+            assert os.path.isdir(
+                full_path
+            ), f"Invalid model evaluation report subdirectory from Micro_avg_performance_summary: {full_path}"
         # Step marginal performance
         df_chains1 = pipe.ls_chains(print_label=False)
         for step in df_chains1.columns:

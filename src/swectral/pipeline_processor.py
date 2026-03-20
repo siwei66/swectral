@@ -1451,6 +1451,7 @@ class _ModelMethod:
         residual_config: Union[str, dict[str, Any], None],
         residual_plot_config: Union[str, dict[str, Any], None],
         influence_analysis_config: Union[str, dict[str, Any], None],
+        save_application_model: bool,
         # File dumping parameter
         space_wait_timeout: int = 36000,
         reserve_free_pct: float = 5.0,
@@ -1472,6 +1473,7 @@ class _ModelMethod:
         self.residual_config = residual_config
         self.residual_plot_config = residual_plot_config
         self.influence_analysis_config = influence_analysis_config
+        self.save_application_model = save_application_model
         self.space_wait_timeout = space_wait_timeout
         self.reserve_free_pct = reserve_free_pct
 
@@ -1534,6 +1536,7 @@ class _ModelMethod:
                 residual_config=self.residual_config,
                 residual_plot_config=self.residual_plot_config,
                 influence_analysis_config=self.influence_analysis_config,
+                save_application_model=self.save_application_model,
             )
         else:
             model_eva.classifier_evaluation(
@@ -1543,6 +1546,7 @@ class _ModelMethod:
                 roc_plot_config=self.roc_plot_config,
                 residual_config=self.residual_config,
                 influence_analysis_config=self.influence_analysis_config,
+                save_application_model=self.save_application_model,
             )
 
     def __call__(self, sample_list: list, data_label: str, report_directory: Optional[str] = None) -> None:

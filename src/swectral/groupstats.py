@@ -545,15 +545,43 @@ def performance_metrics_summary(  # noqa: C901
     proc_label_to_id: dict[str, str]
     proc_id_to_label, proc_label_to_id = process_id_label_lookup_dict(process_config_df)
 
-    # Chains path
-    chains_id_path = config_dir + "SpecPipe_exec_chains_in_ID.csv"
-    chains_label_path = config_dir + "SpecPipe_exec_chains_in_label.csv"
+    # TODO: changed for compressed scenarios
+    # # Chains path
+    # chains_id_path = config_dir + "SpecPipe_exec_chains_in_ID.csv"
+    # chains_label_path = config_dir + "SpecPipe_exec_chains_in_label.csv"
 
-    # Validate paths
-    if not os.path.exists(unc_path(chains_id_path)):
-        raise ValueError(f"Missing required file in given pipeline_config_dir: {chains_id_path}")
-    if not os.path.exists(unc_path(chains_label_path)):
-        raise ValueError(f"Missing required file in given pipeline_config_dir: {chains_label_path}")
+    # # Validate paths
+    # if not os.path.exists(unc_path(chains_id_path)):
+    #     raise ValueError(f"Missing required file in given pipeline_config_dir: {chains_id_path}")
+    # if not os.path.exists(unc_path(chains_label_path)):
+    #     raise ValueError(f"Missing required file in given pipeline_config_dir: {chains_label_path}")
+
+    # Allowed compressed CSV file extensions
+    ext_compress_allowed: list = [".gz", ".bz2", ".zip", ".xz", ".zst", ""]
+
+    # Checking for the base CSV or any compressed variant in ext_map
+    chains_id_path: Optional[str] = next(
+        (
+            pathi
+            for exti in ext_compress_allowed
+            if os.path.exists(unc_path(pathi := f"{config_dir}SpecPipe_exec_chains_in_ID.csv{exti}"))
+        ),
+        None,
+    )
+    chains_label_path: Optional[str] = next(
+        (
+            pathi
+            for exti in ext_compress_allowed
+            if os.path.exists(unc_path(pathi := f"{config_dir}SpecPipe_exec_chains_in_label.csv{exti}"))
+        ),
+        None,
+    )
+
+    # Validate path found
+    if not chains_id_path:
+        raise ValueError(f"Missing ID file (CSV/compressed) in: {config_dir}")
+    if not chains_label_path:
+        raise ValueError(f"Missing Label file (CSV/compressed) in: {config_dir}")
 
     # Chains
     # TODO: df_cid = pd.read_csv(unc_path(chains_id_path))
@@ -906,6 +934,15 @@ def regression_performance_marginal_stats(  # noqa: C901
         min_sec_random_wait=5.0,
         max_sec_random_wait=5.0,
     )
+    # TODO: new, new columns
+    # Add report subdir names for chain report location
+    map_preprocessing_files(
+        csv_name="Performance_summary.csv",
+        result_directory=report_dir,
+        _space_wait_timeout=_space_wait_timeout,
+        _reserve_free_pct=_reserve_free_pct,
+    )
+    # Save dill
     dill_result_path = report_dir + ".__swectral_dill_data/.__swectral_result_summary_Performance_summary.dill"
     os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
     # TODO: changed
@@ -1118,6 +1155,15 @@ def classification_performance_marginal_stats(  # noqa: C901
             min_sec_random_wait=5.0,
             max_sec_random_wait=5.0,
         )
+        # TODO: new, new columns
+        # Add report subdir names for chain report location
+        map_preprocessing_files(
+            csv_name=f"{prefix}_avg_performance_summary.csv",
+            result_directory=report_dir,
+            _space_wait_timeout=_space_wait_timeout,
+            _reserve_free_pct=_reserve_free_pct,
+        )
+        # Save dill
         dill_path = unc_path(
             report_dir + f".__swectral_dill_data/.__swectral_result_summary_{prefix}_avg_performance_summary.dill"
         )
@@ -1218,3 +1264,106 @@ def performance_marginal_stats(
             _reserve_free_pct=_reserve_free_pct,
         )
     return marginal_performance_stats
+
+
+# %% Supplementary: column for result searching
+
+# TODO: add new columns of report subdir names for conveniently chain report location
+
+
+def get_step_index(column_name: str) -> int:
+    """Extract the numeric index from 'Step_n' for sorting."""
+    return int([p for p in column_name.split('_') if p.isdigit()][0])
+
+
+def match_row_to_file(
+    row: pd.Series, match_cols: list[str], model_cols: list[str], txt_lookup: dict[tuple[str, ...], str]
+) -> Optional[str]:
+    """Compare CSV row values against the pre-loaded text file data."""
+    # Get row steps
+    current_steps = []
+    for col in match_cols:
+        current_steps.append(str(row[col]))
+
+    current_steps_tuple = tuple(current_steps)
+
+    # Get result dir preprocessing number
+    filename = txt_lookup.get(current_steps_tuple)
+    if not filename:
+        return None
+
+    prefix = filename.replace(".txt", "")
+    model_vals = [str(row[c]).strip() for c in model_cols if str(row[c]).lower() != 'nan']
+    return f"Data_chain_{prefix}_Model_{'_'.join(model_vals)}"
+
+
+# Add a column to performance summary CSV tables for the convenience of chain report dir location
+def map_preprocessing_files(
+    csv_name: str,
+    result_directory: str,
+    *,
+    _space_wait_timeout: int = 60,
+    _reserve_free_pct: float = 3.0,
+) -> None:
+    """
+    Append txt filenames to a CSV based on Step ID matches, changes are inplace.
+    """
+
+    from glob import glob
+
+    csv_path = os.path.join(result_directory, csv_name)
+    df_summary = df_from_csv(csv_path=unc_path(csv_path))
+
+    # Identify and sort Step columns
+    step_id_cols: list[str] = []
+    model_step_cols: list[str] = []
+    for col in df_summary.columns:
+        c_str = str(col)
+        parts = c_str.split('_')
+        if len(parts) == 2 and parts[0] == 'Step' and parts[1].isdigit():
+            step_id_cols.append(c_str)
+        elif c_str.startswith('Model_step_'):
+            model_step_cols.append(c_str)
+
+    # Sort columns
+    step_id_cols.sort(key=get_step_index)
+    model_step_cols.sort(key=get_step_index)
+
+    # Exclude the last Step
+    match_cols = step_id_cols[:-1]
+
+    # Lookup dictionary from .txt files
+    txt_lookup = {}
+    txt_pattern = os.path.join(result_directory, "Preprocessing_#*.txt")
+
+    for txt_path in glob(txt_pattern):
+        with open(txt_path, 'r') as f:
+            # Read lines and clean up whitespace
+            lines = []
+            for line in f:
+                clean_line = line.strip()
+                if clean_line:
+                    lines.append(clean_line)
+
+            content_key = tuple(lines)
+            filename = os.path.basename(txt_path)
+            txt_lookup[content_key] = filename
+
+    # Apply the matching
+    df_summary['Result_subdirectory'] = df_summary.apply(
+        match_row_to_file,
+        axis=1,
+        args=(match_cols, model_step_cols, txt_lookup),
+    )
+
+    # Save result
+    output_path = os.path.join(result_directory, csv_name)
+    df_to_csv(
+        dataframe=df_summary,
+        csv_path=unc_path(output_path),
+        index=False,
+        space_wait_timeout=_space_wait_timeout,
+        reserve_free_pct=_reserve_free_pct,
+        min_sec_random_wait=5.0,
+        max_sec_random_wait=5.0,
+    )

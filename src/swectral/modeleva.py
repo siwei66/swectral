@@ -2199,6 +2199,7 @@ class ModelEva:
         roc_plot_config: Union[str, dict, None] = "default",
         residual_config: Union[str, dict, None] = "default",
         influence_analysis_config: Union[str, dict, None] = "default",
+        save_application_model: bool = True,
     ) -> None:
         """
         Perform classifier performance evaluation using test data set or cross validation on the specified data of 'ModelEva'.
@@ -2302,6 +2303,11 @@ class ModelEva:
                 Default is using model validation method if it is train-test split, and "2-fold" if the model validation method is "k-fold" or "loo".
                 - random_state : None, optional
                     Random state for data splitting. If None, the random state is not fixed. The default is None.
+
+        save_application_model : bool, optional
+            Whether application model is trained on all data and stored in the chain report.
+            Default is True.
+
         """  # noqa: E501
 
         # Data split
@@ -2345,7 +2351,8 @@ class ModelEva:
                 self._classifier_influential_analysis(**influence_analysis_config)
 
         # Model for application
-        self.train_application_model()
+        if save_application_model:
+            self.train_application_model()
 
     # Train training folds and predict target fold (Regressor)
     @simple_type_validator
@@ -3263,6 +3270,7 @@ class ModelEva:
         residual_config: Union[str, dict[str, Any], None] = "default",
         residual_plot_config: Union[str, dict[str, Any], None] = "default",
         influence_analysis_config: Union[str, dict[str, Any], None] = "default",
+        save_application_model: bool = True,
     ) -> None:
         """
         Perform regressor performance evaluation using test dataset or cross-validation.
@@ -3368,6 +3376,11 @@ class ModelEva:
                     Default is using model validation method if it is train-test split, and "2-fold" if the model validation method is "k-fold" or "loo".
                 - random_state : None, optional
                     Random state for data splitting. If None, the random state is not fixed. The default is None.
+
+        save_application_model : bool, optional
+            Whether application model is trained on all data and stored in the chain report.
+            Default is True.
+
         """  # noqa: E501
 
         # Data split
@@ -3452,7 +3465,8 @@ class ModelEva:
                 )
 
         # Model for application
-        self.train_application_model()
+        if save_application_model:
+            self.train_application_model()
 
     # Application train
     @simple_type_validator
