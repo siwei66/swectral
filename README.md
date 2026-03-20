@@ -53,8 +53,8 @@ Follow these steps to install the project:
 4.  **Install from source (for development):**
 
     ```python
-    git clone https://github.com/siwei66/SpecPipe.git
-    cd SpecPipe
+    git clone https://github.com/siwei66/swectral.git
+    cd swectral
     pip install -e swectral
     ```
 
