@@ -121,15 +121,13 @@ if __name__ == '__main__':
 
     def mom_1_2(X):
         import numpy as np  # noqa
-        from swectral import moment2d
         X = np.asarray(X)
         mean = np.nanmean(X, axis=0)
         std = np.nanstd(X, axis=0)
-        kurt = np.asarray(moment2d(X, n=4, standardized=True, axis=0))
         if mean.ndim == 1:
-            result = np.concatenate((mean, std, kurt))
+            result = np.concatenate((mean, std))
         else:
-            result = np.concatenate((mean, std, kurt), axis=1)
+            result = np.concatenate((mean, std), axis=1)
         return result
 
     def mom_1_4(X):
@@ -138,11 +136,12 @@ if __name__ == '__main__':
         X = np.asarray(X)
         mean = np.nanmean(X, axis=0)
         std = np.nanstd(X, axis=0)
+        skew = np.asarray(moment2d(X, n=3, standardized=True, axis=0))
         kurt = np.asarray(moment2d(X, n=4, standardized=True, axis=0))
         if mean.ndim == 1:
             result = np.concatenate((mean, std, kurt))
         else:
-            result = np.concatenate((mean, std, kurt), axis=1)
+            result = np.concatenate((mean, std, skew, kurt), axis=1)
         return result
 
     # 5 Scaling and centering
