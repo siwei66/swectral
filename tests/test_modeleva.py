@@ -461,7 +461,7 @@ class TestModelEva(unittest.TestCase):
                 assert i not in group_test
 
     @staticmethod
-    def test_classifier_data_split_mask() -> None:
+    def test_classifier_data_split_mask() -> None:  # noqa: C901
         """Test data split with train and test sample mask for classifier."""
 
         temp_dir = TestModelEva.temp_dir
@@ -545,6 +545,67 @@ class TestModelEva(unittest.TestCase):
             assert (fold[0] > 3).all()
             assert (fold[1] < 16).all()
             assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+
+        # Edge Case: train- / test-masked samples have no intersection ----------------------
+        model_eva = modeleva_initialization_regression(
+            temp_dir,
+            n_samples=20,
+            data_split="60-40-split",
+            n_validation_group=5,
+            train_mask=True,
+            test_mask=True,
+            perc_mask=0.6,
+        )
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 1
+        train_inds = []
+        test_inds = []
+        for fold in model_eva.dsp_inds:
+            train_inds += list(fold[0])
+            test_inds += list(fold[1])
+            assert len(np.intersect1d(fold[0], fold[1])) == 0
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+        assert len(np.intersect1d(np.asarray(train_inds), np.asarray(test_inds))) == 0
+
+        model_eva = modeleva_initialization_regression(
+            temp_dir,
+            n_samples=20,
+            data_split="2-fold",
+            n_validation_group=5,
+            train_mask=True,
+            test_mask=True,
+            perc_mask=0.6,
+        )
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 2
+        train_inds = []
+        test_inds = []
+        for fold in model_eva.dsp_inds:
+            train_inds += list(fold[0])
+            test_inds += list(fold[1])
+            assert len(np.intersect1d(fold[0], fold[1])) == 0
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+        assert len(np.intersect1d(np.asarray(train_inds), np.asarray(test_inds))) == 0
+
+        model_eva = modeleva_initialization_regression(
+            temp_dir,
+            n_samples=20,
+            data_split="loo",
+            n_validation_group=5,
+            train_mask=True,
+            test_mask=True,
+            perc_mask=0.6,
+        )
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 5
+        train_inds = []
+        test_inds = []
+        for fold in model_eva.dsp_inds:
+            train_inds += list(fold[0])
+            test_inds += list(fold[1])
+            assert len(np.intersect1d(fold[0], fold[1])) == 0
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+        assert len(np.intersect1d(np.asarray(train_inds), np.asarray(test_inds))) == 0
 
     @staticmethod
     def test_classifier_validation() -> None:
@@ -787,7 +848,7 @@ class TestModelEva(unittest.TestCase):
                 assert i not in group_test
 
     @staticmethod
-    def test_regressor_data_split_mask() -> None:
+    def test_regressor_data_split_mask() -> None:  # noqa: C901
         """Test data split with train and test sample mask for regressor."""
 
         temp_dir = TestModelEva.temp_dir
@@ -871,6 +932,63 @@ class TestModelEva(unittest.TestCase):
             assert (fold[0] > 3).all()
             assert (fold[1] < 16).all()
             assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+
+        # Edge Case: train- / test-masked samples have no intersection ----------------------
+        model_eva = modeleva_initialization_regression(
+            temp_dir,
+            n_samples=20,
+            data_split="60-40-split",
+            n_validation_group=5,
+            train_mask=True,
+            test_mask=True,
+            perc_mask=0.6,
+        )
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 1
+        train_inds = []
+        test_inds = []
+        for fold in model_eva.dsp_inds:
+            train_inds += list(fold[0])
+            test_inds += list(fold[1])
+            assert len(np.intersect1d(fold[0], fold[1])) == 0
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+        assert len(np.intersect1d(np.asarray(train_inds), np.asarray(test_inds))) == 0
+
+        model_eva = modeleva_initialization_regression(
+            temp_dir,
+            n_samples=20,
+            data_split="2-fold",
+            n_validation_group=5,
+            train_mask=True,
+            test_mask=True,
+            perc_mask=0.6,
+        )
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 2
+        for fold in model_eva.dsp_inds:
+            train_inds += list(fold[0])
+            test_inds += list(fold[1])
+            assert len(np.intersect1d(fold[0], fold[1])) == 0
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+        assert len(np.intersect1d(np.asarray(train_inds), np.asarray(test_inds))) == 0
+
+        model_eva = modeleva_initialization_regression(
+            temp_dir,
+            n_samples=20,
+            data_split="loo",
+            n_validation_group=5,
+            train_mask=True,
+            test_mask=True,
+            perc_mask=0.6,
+        )
+        model_eva._data_split()
+        assert len(model_eva.dsp_inds) == 5
+        for fold in model_eva.dsp_inds:
+            train_inds += list(fold[0])
+            test_inds += list(fold[1])
+            assert len(np.intersect1d(fold[0], fold[1])) == 0
+            assert len(np.intersect1d(model_eva.validation_group[fold[0]], model_eva.validation_group[fold[1]])) == 0
+        assert len(np.intersect1d(np.asarray(train_inds), np.asarray(test_inds))) == 0
 
     @staticmethod
     def test_regressor_validation() -> None:

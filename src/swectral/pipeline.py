@@ -4703,6 +4703,7 @@ class SpecPipe:
         dump_backup: bool = False,
         step_result: bool = False,
         resume: bool = False,
+        resume_modeling: bool = True,
         sample_data_to_csv: bool = True,
         show_progress: bool = True,
         save_config: bool = True,
@@ -4768,6 +4769,13 @@ class SpecPipe:
 
             This avoids redundant processing after interruptions.
             Default is False.
+
+        resume_modeling : bool, optional
+            If True, resume modeling; otherwise, rebuild and re-evaluate all models.
+
+            Effective only if ``resume=True``, ignored if ``resume=False``
+
+            Default is True.
 
         sample_data_to_csv : bool, optional
             Whether to additionally save preprocessed sample data as CSV files.
@@ -4907,7 +4915,7 @@ class SpecPipe:
             print("\n\n========= Model evaluation =========\n")
             self.model_evaluation(
                 n_processor=ncpu_model,
-                resume=resume,
+                resume=(resume & resume_modeling),
                 report_directory=result_directory,
                 show_progress=show_progress,
                 save_config=False,

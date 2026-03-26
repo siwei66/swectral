@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swectral"
-version = "0.6.2"
+version = "0.6.3"
 description = "A Python framework for automated batch composition, implementation and method assessment of plant hyperspectral modeling pipelines."
 readme = "README.md"
 requires-python = ">=3.9"

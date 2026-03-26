@@ -19,7 +19,6 @@ from typing import Annotated, Any, Literal, Optional, Union, overload
 from datetime import datetime
 
 # Basic data
-import copy
 import numpy as np
 import pandas as pd
 import torch
@@ -107,10 +106,9 @@ def is_float(value: Any) -> bool:  # type: ignore[no-untyped-def]
         return False
 
 
-# %% Data splitter
+# %% Validate model validation method / data train-test split method
 
 
-# Validate model validation method / data train-test split method
 @simple_type_validator
 def _val_validation_method(  # noqa: C901
     X: np.ndarray, validation_method: str  # noqa: N803
@@ -124,9 +122,8 @@ def _val_validation_method(  # noqa: C901
         fsp = validation_method.split("-")
         if (len(fsp) != 2) or (fsp[-1] != "fold"):
             raise ValueError(
-                f"Invalid k-fold cross validation method, \
-                    expected format: 'k-fold' (k is the number of folds), \
-                    but got: '{validation_method}'"
+                "Invalid k-fold cross validation method, expected format: 'k-fold' (k is the number of folds), "
+                f"but got: '{validation_method}'"
             )
         else:
             try:
@@ -149,22 +146,21 @@ def _val_validation_method(  # noqa: C901
         ttsp = validation_method.split("-")
         if (len(ttsp) != 3) or (ttsp[-1] != "split"):
             raise ValueError(
-                f"Invalid train-test split, \
-                    expected format: 'm-n-split' ('m' is train size, 'n' is test size), \
-                    got: '{validation_method}'"
+                "Invalid train-test split, expected format: 'm-n-split' ('m' is train size, 'n' is test size), "
+                f"got: '{validation_method}'"
             )
         else:
             try:
                 m, n = float(ttsp[0]), float(ttsp[1])
             except Exception as e:
                 raise ValueError(
-                    f"Invalid train-test split values. \
-                        Expected numbers for 'm' (train size) and 'n' (test size), but got: {fsp[0]}"
+                    "Invalid train-test split values. "
+                    f"Expected numbers for 'm' (train size) and 'n' (test size), but got: {fsp[0]}"
                 ) from e
             if (m <= 0) | (n <= 0):
                 raise ValueError(
-                    f"m (train size) and n (test size) must be positive numbers for train-test-split, \
-                        got train size: {m}, test size: {n}"
+                    "m (train size) and n (test size) must be positive numbers for train-test-split, "
+                    f"got train size: {m}, test size: {n}"
                 )
         return (m / (m + n), n / (m + n))
 
@@ -174,13 +170,14 @@ def _val_validation_method(  # noqa: C901
 
     else:
         raise ValueError(
-            "Unsupported validation method, \
-                validation_method must be one of: \
-                'loo' / 'k-fold' (e.g. '5-fold') / 'm-n-split' (e.g. '70-30-split')"
+            "Unsupported validation method, "
+            "validation_method must be one of: 'loo' / 'k-fold' (e.g. '5-fold') / 'm-n-split' (e.g. '70-30-split')"
         )
 
 
-# Get indices for data train-test split
+# %% Get indices for data train-test split
+
+
 @simple_type_validator
 def _data_split_core(  # noqa: C901
     X: np.ndarray,  # noqa: N803
@@ -249,7 +246,7 @@ def _data_split_core(  # noqa: C901
                         f"Sample number of single class {n_member_min} less than number of classes,\
                             data split falls back to 'KFold' instead of 'StratifiedKFold'",
                         UserWarning,
-                        stacklevel=1,
+                        stacklevel=2,
                     )
                     kf = KFold(n_splits=val_method, shuffle=True, random_state=random_state)
                     for train_idx, val_idx in kf.split(indices):
@@ -279,7 +276,7 @@ def _data_split_core(  # noqa: C901
                         f"Sample number of single class {n_member_min} less than number of classes,"
                         "data split falls back to 'GroupKFold' instead of 'StratifiedGroupKFold'",
                         UserWarning,
-                        stacklevel=1,
+                        stacklevel=2,
                     )
                     kf = GroupKFold(n_splits=val_method, shuffle=True, random_state=random_state)
                     for train_idx, val_idx in kf.split(indices, groups=valgroups):
@@ -306,34 +303,196 @@ def _data_split_core(  # noqa: C901
     return dsp_inds
 
 
-# Masked_sample_redistributer
+# %% Get indices for data train-test split using training and testing IDs
+
+
 @simple_type_validator
-def _masked_sample_redistributer(fold_ids: dict, random_state: int) -> dict:
+def _data_split_disjoint(  # noqa: C901
+    X: np.ndarray,  # noqa: N803
+    y: np.ndarray,
+    validation_group: np.ndarray,
+    ids_tr: np.ndarray,
+    ids_te: np.ndarray,
+    is_regression: bool,
+    ynames: Union[np.ndarray, list, None],
+    random_state: int,
+    val_method: Union[int, tuple[float, float], str],
+) -> list[tuple[np.ndarray, np.ndarray]]:
     """
-    Crop fold ids in the dict mapping available fold ids of sample id i, making masked samples evenly distributed in the folds.
-    """  # noqa: E501
-    rng = np.random.default_rng(random_state)
+    Generates group-aware and mask-aware train-test-split sample indices.
+    The indices come from the given available sample indices after train-/test-masking.
+    The function is used for disjoint train-/test-mask with the need of validation group awareness.
+    """
 
-    # Map values to potential keys
-    val_to_keys: dict = {}
-    for key, values in fold_ids.items():
-        for v in values:
-            if v not in val_to_keys:
-                val_to_keys[v] = []
-            val_to_keys[v].append(key)
+    valgroups_te = np.asarray(validation_group)[ids_te]
+    y_te = y[ids_te]
+    X_te = X[ids_te]  # noqa: N806
 
-    result: dict = {key: [] for key in fold_ids}
+    indices_te = np.arange(len(ids_te))
+    raw_te_splits: list[np.ndarray] = []
 
-    # Assign values
-    for v in sorted(val_to_keys.keys()):
-        possible_keys = val_to_keys[v]
-        loads = [len(result[k]) for k in possible_keys]
-        min_load = min(loads)
-        candidates = [k for k in possible_keys if len(result[k]) == min_load]
-        chosen_key = rng.choice(candidates)
-        result[chosen_key].append(v)
+    # Ensure labels are 1D for stratification
+    y_1d_arr = y_te.reshape(-1)
 
-    return result
+    # Guard against empty test set
+    if len(indices_te) == 0:
+        raise ValueError("Empty test set; cannot perform splitting.")
+
+    # 1 & 2: Train-test split
+    if isinstance(val_method, tuple):
+        # 1 Simple train-test split
+        if len(valgroups_te) == len(set(valgroups_te)):
+            _, test_idx = train_test_split(
+                indices_te,
+                test_size=val_method[1],
+                random_state=random_state,
+                shuffle=True,
+            )
+            raw_te_splits.append(test_idx)
+        # 2 Group train-test split
+        else:
+            gss = GroupShuffleSplit(
+                n_splits=1,
+                test_size=val_method[1],
+                random_state=random_state,
+            )
+            _, test_idx = next(gss.split(indices_te, groups=valgroups_te))
+            raw_te_splits.append(test_idx)
+
+    # 3 to 8: k-Fold
+    elif isinstance(val_method, int):
+
+        # Compute safe upper bound for splits
+        n_te_samples = len(indices_te)
+        n_te_groups = len(set(valgroups_te))
+        max_allowed_splits = min(n_te_samples, n_te_groups)
+
+        # Dynamically cap n_splits to feasible range
+        if val_method > max_allowed_splits:
+            warnings.warn(
+                f"Requested n_splits={val_method}, but only {max_allowed_splits} samples/groups available.",
+                UserWarning,
+                stacklevel=2,
+            )
+            effective_splits = max_allowed_splits
+        else:
+            effective_splits = val_method
+
+        # Fallback to single split when CV is not feasible
+        if effective_splits < 2:
+            warnings.warn(
+                "Not enough test data for cross-validation, using a single split with all test samples.",
+                UserWarning,
+                stacklevel=2,
+            )
+            raw_te_splits.append(indices_te)
+
+        # 3 Simple KFold for regression
+        elif len(valgroups_te) == len(set(valgroups_te)):
+            if is_regression:
+                kf = KFold(
+                    n_splits=effective_splits,
+                    shuffle=True,
+                    random_state=random_state,
+                )
+                raw_te_splits.extend([val_idx for _, val_idx in kf.split(indices_te)])
+            else:
+                if ynames is None:
+                    raise ValueError("ynames must be provided for classification.")
+
+                n_member_min: np.number = min(np.sum(y_1d_arr == yn) for yn in ynames)
+
+                # 4 Stratified KFold for classification if available
+                if n_member_min >= effective_splits:
+                    kf = StratifiedKFold(
+                        n_splits=effective_splits,
+                        shuffle=True,
+                        random_state=random_state,
+                    )
+                    raw_te_splits.extend([val_idx for _, val_idx in kf.split(X_te, y_1d_arr)])
+                # 5 Simple KFold for classification - fall back to plain KFold
+                else:
+                    warnings.warn(
+                        f"Minimum samples per class ({n_member_min}) < n_splits ({effective_splits}), "
+                        "falling back to KFold.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    kf = KFold(
+                        n_splits=effective_splits,
+                        shuffle=True,
+                        random_state=random_state,
+                    )
+                    raw_te_splits.extend([val_idx for _, val_idx in kf.split(indices_te)])
+        else:
+            # 6 GroupKFold for regression
+            if is_regression:
+                # Use effective_splits instead of val_method
+                kf = GroupKFold(n_splits=effective_splits)  # CHANGED
+                raw_te_splits.extend([val_idx for _, val_idx in kf.split(indices_te, groups=valgroups_te)])
+            else:
+                if ynames is None:
+                    raise ValueError("ynames must be provided for classification.")
+
+                n_member_min = min(np.sum(y_1d_arr == yn) for yn in ynames)
+
+                # 7 Stratified KFold for classification if available
+                # Ensure stratified group split feasibility
+                if n_member_min >= effective_splits:
+                    kf = StratifiedGroupKFold(
+                        n_splits=effective_splits,
+                        shuffle=True,
+                        random_state=random_state,
+                    )
+                    raw_te_splits.extend([val_idx for _, val_idx in kf.split(X_te, y_1d_arr, groups=valgroups_te)])
+                # 8 Simple GroupKFold for classification - fall back to plain GroupKFold
+                else:
+                    warnings.warn(
+                        f"Minimum samples per class ({n_member_min}) < "
+                        f"n_splits ({effective_splits}); falling back to GroupKFold.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    # kf = GroupKFold(n_splits=val_method)
+                    kf = GroupKFold(n_splits=effective_splits)
+                    raw_te_splits.extend([val_idx for _, val_idx in kf.split(indices_te, groups=valgroups_te)])
+
+    # 9 & 10: LOOCV
+    elif val_method == "loo":
+        # 9 Simple LOOCV
+        if len(valgroups_te) == len(set(valgroups_te)):
+            loo = LeaveOneOut()
+            raw_te_splits.extend([val_idx for _, val_idx in loo.split(indices_te)])
+        # 10 LOGO-CV
+        else:
+            logo = LeaveOneGroupOut()
+            raw_te_splits.extend([val_idx for _, val_idx in logo.split(indices_te, groups=valgroups_te)])
+    else:
+        raise ValueError(f"Unknown validation method: {val_method}")
+
+    # Assemble final folds
+    dsp_inds: list[tuple[np.ndarray, np.ndarray]] = []
+    validation_group_arr = np.asarray(validation_group)
+
+    for te_idx_relative in raw_te_splits:
+        fold_te_ids = ids_te[te_idx_relative]
+
+        fold_te_groups = set(validation_group_arr[fold_te_ids])
+
+        mask_tr_not_leaked = ~np.isin(
+            validation_group_arr[ids_tr],
+            list(fold_te_groups),
+        )
+        fold_tr_ids = ids_tr[mask_tr_not_leaked]
+
+        if len(fold_tr_ids) > 0 and len(fold_te_ids) > 0:
+            dsp_inds.append((fold_tr_ids, fold_te_ids))
+
+    # Failure when all folds invalid
+    if not dsp_inds:
+        raise ValueError("All folds were filtered out after group leakage removal; " "insufficient disjoint data.")
+
+    return dsp_inds
 
 
 # %% ModelEva module
@@ -922,7 +1081,7 @@ class ModelEva:
             else:
                 sample_labels.append(slabel)
 
-            # Get validation group
+            # Get validation group - initialization
             if i == 0:
                 val_group = [st[2]]
             else:
@@ -1058,6 +1217,9 @@ class ModelEva:
         tr_mask = np.asarray(train_mask if train_mask is not None else np.ones(n_samples, bool)).astype(bool)
         te_mask = np.asarray(test_mask if test_mask is not None else np.ones(n_samples, bool)).astype(bool)
 
+        # Array validation group
+        validation_group_arr = np.array(self.validation_group)
+
         # Validate whether mask applied
         if (te_mask == np.ones(n_samples, bool)).all() and (tr_mask == np.ones(n_samples, bool)).all():
             skip_mask: bool = True
@@ -1067,108 +1229,166 @@ class ModelEva:
         # Apply train test mask ========================================================================================
         if not skip_mask:
 
-            # For non-LOO appending approach
-            if not (
-                val_method == "loo" and len(set(self.validation_group[te_mask])) == len(self.validation_group[te_mask])
-            ):
+            # Get shared mask-on
+            shared_mask = te_mask & tr_mask
 
-                # Get shared mask-on samples ---------------------------------------------------------------------------
-                shared_mask = te_mask * tr_mask
-
-                # Train-only mask
-                mask_tr_only = tr_mask * (~te_mask)
-                if np.sum(mask_tr_only) > 0:
-                    mask_tr = True
-                    tr_only_ids = np.where(mask_tr_only)[0]
-                else:
-                    mask_tr = False
-
-                # Test-only mask
-                mask_te_only = te_mask * (~tr_mask)
-                if np.sum(mask_te_only) > 0:
-                    mask_te = True
-                    te_only_ids = np.where(mask_te_only)[0]
-                else:
-                    mask_te = False
-
-                # Original IDs to shared set IDs
-                ids = np.array(range(len(self.X)))
-                ids_shared = ids[shared_mask]
-
-                # Apply masks
-                X_shared = self.X[shared_mask]  # noqa: N806
-                y_shared = self.y[shared_mask]
-                val_group_shared = self.validation_group[shared_mask]
-
-                # Create splitted data for shared mask-on samples ------------------------------------------------------
-                dsp_inds_shared = _data_split_core(
-                    X=X_shared,
-                    y=y_shared,
-                    validation_group=val_group_shared,
-                    random_state=random_state,
-                    val_method=val_method,
-                    is_regression=self.is_regression,
-                    ynames=self.ynames,
-                )
-
-                # Append the rest masked train or test-only samples ----------------------------------------------------
-                dsp_inds = deepcopy(dsp_inds_shared)
-                ids_fold_dist: dict = {}
-                for i, ttpair in enumerate(dsp_inds_shared):
-                    ids_tr = ids_shared[ttpair[0]]
-                    ids_te = ids_shared[ttpair[1]]
-                    # Append train-only samples
-                    if mask_tr:
-                        tr_only_ids_i = np.array(
-                            [
-                                ind
-                                for ind in tr_only_ids
-                                if self.validation_group[ind] not in set(self.validation_group[ids_te])
-                            ]
-                        )
-                        ids_tr = np.concatenate([ids_tr, tr_only_ids_i])
-                    # Append test-only samples
-                    if mask_te:
-                        te_only_ids_i = np.array(
-                            [
-                                ind
-                                for ind in te_only_ids
-                                if self.validation_group[ind] not in set(self.validation_group[ids_tr])
-                            ]
-                        )
-                        ids_te = np.concatenate([ids_te, te_only_ids_i]).astype(int)
-                        ids_fold_dist[i] = te_only_ids_i.tolist()
-                    dsp_inds[i] = (ids_tr, ids_te)
-
-                ids_fold_redist = _masked_sample_redistributer(fold_ids=ids_fold_dist, random_state=random_state)
-
-                # Correct test IDs
-                for k in list(ids_fold_dist.keys()):
-                    ids_tr = dsp_inds[k][0]
-                    ids_te = ids_shared[dsp_inds_shared[k][1]]
-                    te_only_redist = np.array(ids_fold_redist[k])
-                    ids_te = np.concatenate([ids_te, te_only_redist]).astype(int)
-                    dsp_inds[k] = (ids_tr, ids_te)
-
-            # For LOO fold-filter approach =============================================================================
+            # Get train-only mask
+            mask_tr_only = tr_mask & (~te_mask)
+            if mask_tr_only.any():
+                mask_tr = True
+                tr_only_ids = np.where(mask_tr_only)[0]
             else:
-                dsp_inds_raw = _data_split_core(
+                mask_tr = False
+
+            # Get test-only mask
+            mask_te_only = te_mask & (~tr_mask)
+            if mask_te_only.any():
+                mask_te = True
+                te_only_ids = np.where(mask_te_only)[0]
+            else:
+                mask_te = False
+
+            # TODO: correct for no share situation - fallback to train-test split
+            # If there are shared samples for training and testing =====================================================
+            if shared_mask.any():
+
+                # For non-LOO appending approach =======================================================================
+                if not (
+                    val_method == "loo"
+                    and len(set(validation_group_arr[te_mask])) == len(validation_group_arr[te_mask])
+                ):
+
+                    # For shared mask-on samples -----------------------------------------------------------------------
+                    # Original IDs to shared set IDs
+                    ids = np.array(range(len(self.X)))
+                    ids_shared = ids[shared_mask]
+
+                    # Apply masks
+                    X_shared = self.X[shared_mask]  # noqa: N806
+                    y_shared = self.y[shared_mask]
+                    val_group_shared = validation_group_arr[shared_mask]
+
+                    # Create splitted data for shared mask-on samples --------------------------------------------------
+                    dsp_inds_shared = _data_split_core(
+                        X=X_shared,
+                        y=y_shared,
+                        validation_group=val_group_shared,
+                        random_state=random_state,
+                        val_method=val_method,
+                        is_regression=self.is_regression,
+                        ynames=self.ynames,
+                    )
+
+                    # Append the rest masked train or test-only samples ------------------------------------------------
+                    dsp_inds = list(dsp_inds_shared)
+                    validation_groups_shared = set(validation_group_arr[shared_mask.nonzero()[0]])
+                    # Test-only IDs of new independent validation groups - evenly distributed ---------
+                    # te_only_ids_new = np.array(
+                    #     [
+                    #         ind
+                    #         for ind in te_only_ids
+                    #         if validation_group_arr[ind] not in validation_groups_shared
+                    #     ]
+                    # )
+                    # TODO: vectorized for large sample size and folds
+                    mask_not_shared = ~np.isin(validation_group_arr[te_only_ids], list(validation_groups_shared))
+                    te_only_ids_new = te_only_ids[mask_not_shared]
+                    if len(te_only_ids_new) > 0:
+                        te_new_chunk_size = len(te_only_ids_new) // len(dsp_inds_shared)
+                        te_new_remaind = len(te_only_ids_new) % len(dsp_inds_shared)
+                        te_new_start = 0
+                    # TODO: improved logic for validation groups
+                    for i, ttpair in enumerate(dsp_inds_shared):
+                        ids_tr = ids_shared[ttpair[0]]
+                        ids_te = ids_shared[ttpair[1]]
+                        te_groups_shared = set(validation_group_arr[ids_te])
+                        # TODO: tr_groups_shared = set(self.validation_group[ids_tr])
+                        # Append test-only samples
+                        if mask_te:
+                            # Test-only IDs of existed test validation groups -------------------------
+                            # TODO: te_only_ids_i = np.array(
+                            # te_only_ids_i_existed = np.array(
+                            #     [
+                            #         ind
+                            #         for ind in te_only_ids
+                            #         # TODO: if self.validation_group[ind] not in te_groups_shared
+                            #         if validation_group_arr[ind] in te_groups_shared
+                            #     ]
+                            # )
+                            # TODO: vectorized for large sample size and folds
+                            mask_te_only_existed = np.isin(validation_group_arr[te_only_ids], list(te_groups_shared))
+                            te_only_ids_i_existed = te_only_ids[mask_te_only_existed]
+                            if len(te_only_ids_new) > 0:
+                                te_new_size = te_new_chunk_size + (1 if i < te_new_remaind else 0)
+                                te_only_ids_new_i = te_only_ids_new[te_new_start : (te_new_start + te_new_size)]
+                                te_new_start += te_new_size
+                                te_only_ids_i = np.concatenate([te_only_ids_i_existed, te_only_ids_new_i])
+                            else:
+                                te_only_ids_i = te_only_ids_i_existed
+                            ids_te = np.concatenate([ids_te, te_only_ids_i]).astype(int)
+                            # ids_fold_dist[i] = te_only_ids_i.tolist()
+                        # Append train-only samples
+                        te_groups_used = set(validation_group_arr[ids_te])
+                        if mask_tr:
+                            # tr_only_ids_i = np.array(
+                            #     [
+                            #         ind
+                            #         for ind in tr_only_ids
+                            #         # TODO: if self.validation_group[ind] not in tr_groups_shared
+                            #         if validation_group_arr[ind] not in te_groups_used
+                            #     ]
+                            # )
+                            # TODO: vectorized for large sample size and folds
+                            mask_tr_only_not_te = ~np.isin(validation_group_arr[tr_only_ids], list(te_groups_used))
+                            tr_only_ids_i = tr_only_ids[mask_tr_only_not_te]
+                            ids_tr = np.concatenate([ids_tr, tr_only_ids_i]).astype(int)
+                        dsp_inds[i] = (ids_tr, ids_te)
+
+                # For LOO fold-filter approach =========================================================================
+                else:
+                    dsp_inds_raw = _data_split_core(
+                        X=self.X,
+                        y=self.y,
+                        validation_group=self.validation_group,
+                        random_state=random_state,
+                        val_method=val_method,
+                        is_regression=self.is_regression,
+                        ynames=self.ynames,
+                    )
+                    # Filter folds
+                    dsp_inds = []
+                    for ttpair in dsp_inds_raw:
+                        ids_tr = ttpair[0]
+                        # TODO: ids_tr1 = np.asarray([tr_id for tr_id in ids_tr if tr_mask[tr_id]])
+                        # TODO: vectorized for large sample size and folds
+                        ids_tr1 = ids_tr[tr_mask[ids_tr]]
+                        ids_te = ttpair[1]
+                        if te_mask[ids_te[0]] and len(ids_tr1) > 0:
+                            dsp_inds.append((ids_tr1, ids_te))
+
+            # No-shared samples allowing both training and testing - fallback to train-test-split ----------------------
+            # TODO: new
+            elif np.sum(te_mask) > 0 and np.sum(tr_mask) > 0:
+                ids_tr = tr_mask.nonzero()[0]
+                ids_te = te_mask.nonzero()[0]
+                dsp_inds = _data_split_disjoint(
                     X=self.X,
                     y=self.y,
                     validation_group=self.validation_group,
-                    random_state=random_state,
-                    val_method=val_method,
+                    ids_tr=ids_tr,
+                    ids_te=ids_te,
                     is_regression=self.is_regression,
                     ynames=self.ynames,
+                    random_state=random_state,
+                    val_method=val_method,
                 )
-                # Filter folds
-                dsp_inds = []
-                for ttpair in dsp_inds_raw:
-                    tr_ids = ttpair[0]
-                    tr_ids1 = np.asarray([tr_id for tr_id in tr_ids if tr_mask[tr_id]])
-                    te_ids = ttpair[1]
-                    if te_mask[te_ids[0]]:
-                        dsp_inds.append((tr_ids1, te_ids))
+
+            else:
+                raise ValueError(
+                    "No sample is allowed for training or testing.\n"
+                    f"Got number of samples for training: {np.sum(tr_mask)}\n"
+                    f"Got number of samples for testing: {np.sum(te_mask)}\n"
+                )
 
         # No mask ======================================================================================================
         else:
@@ -1256,7 +1476,7 @@ class ModelEva:
                 if not self.silent_all:
                     print(f"\rTraining fold: {itr + 1}/{len(dsps)}", end="", flush=True)
             # Model
-            model = copy.deepcopy(self._model)  # type: ignore[attr-defined]
+            model = deepcopy(self._model)  # type: ignore[attr-defined]
             # unrecognized dynamic custom model, independent runtime validated, following the same
 
             # Sample ids of target values in validation
@@ -2037,7 +2257,7 @@ class ModelEva:
             y_p_test = pd.DataFrame(y_p_test, columns=ynames)
 
             # Calculate MSE
-            model_full = copy.deepcopy(self._model)
+            model_full = deepcopy(self._model)
             model_full.fit(X_train, y_train.flatten())  # type: ignore[attr-defined]
             # Custom model, independent runtime validated, following the same
             p_full = model_full.predict_proba(X_test)  # type: ignore[attr-defined]
@@ -2078,7 +2298,7 @@ class ModelEva:
             influence = np.zeros((X.shape[0], len(ynames)))
             for i in range(X_train.shape[0]):
                 # LOO-Model
-                model_loo = copy.deepcopy(self._model)
+                model_loo = deepcopy(self._model)
                 # LOO-data
                 X_loo = np.delete(X_train, i, axis=0)  # Leave-one-out dataset  # noqa: N806
                 y_loo = np.delete(y_train, i, axis=0)
@@ -2407,7 +2627,7 @@ class ModelEva:
                 if not self.silent_all:
                     print(f"\rTraining fold: {itr + 1}/{len(dsps)}", end="", flush=True)
             # Model
-            model = copy.deepcopy(self._model)
+            model = deepcopy(self._model)
             # Sample ids of target values in validation
             sid_test = sid[test_ind]
             sid_train = sid[train_ind]
@@ -3127,7 +3347,7 @@ class ModelEva:
             y_train, y_test = y[train_ind], y[test_ind]
 
             # Calculate MSE
-            model_full = copy.deepcopy(self._model)
+            model_full = deepcopy(self._model)
             model_full.fit(X_train, y_train.flatten())  # type: ignore[attr-defined]
             # Custom model, independent runtime validated, following the same
             p_full = model_full.predict(X_test)  # type: ignore[attr-defined]
@@ -3149,7 +3369,7 @@ class ModelEva:
             influence = np.zeros((X.shape[0],))
             for i in range(X_train.shape[0]):
                 # LOO-Model
-                model_loo = copy.deepcopy(self._model)
+                model_loo = deepcopy(self._model)
 
                 # LOO-data
                 X_loo = np.delete(X_train, i, axis=0)  # Leave-one-out dataset  # noqa: N806
@@ -3495,7 +3715,7 @@ class ModelEva:
         y = self._y
 
         # Model
-        model = copy.deepcopy(self._model)
+        model = deepcopy(self._model)
 
         # Train model on entire data set
         model.fit(X, y.flatten())  # type: ignore[attr-defined]
