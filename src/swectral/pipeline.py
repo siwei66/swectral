@@ -4033,8 +4033,8 @@ class SpecPipe:
                 sdata["label"] = [lbt[1] for lbt in self.spec_exp.sample_labels if lbt[0] == roit[0]][0]
                 sdata["target"] = [tg[2] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["validation_group"] = [tg[4] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
-                sdata["train"] = [tg[5] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
-                sdata["test"] = [tg[6] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
+                sdata["test"] = [tg[5] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
+                sdata["train"] = [tg[6] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["img_path"] = [
                     imgt[4] for imgt in self.spec_exp.images if ((imgt[1] == roit[1]) & (imgt[2] == roit[2]))
                 ][0]
@@ -4052,8 +4052,8 @@ class SpecPipe:
                 sdata["label"] = [lbt[1] for lbt in self.spec_exp.sample_labels if lbt[0] == st[0]][0]
                 sdata["target"] = [tg[2] for tg in self.spec_exp.sample_targets if tg[0] == st[0]][0]
                 sdata["validation_group"] = [tg[4] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
-                sdata["train"] = [tg[5] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
-                sdata["test"] = [tg[6] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
+                sdata["test"] = [tg[5] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
+                sdata["train"] = [tg[6] for tg in self.spec_exp.sample_targets if tg[0] == roit[0]][0]
                 sdata["spec1d"] = tuple(st[4])
                 sample_data.append(sdata)
             self.__sample_data = sample_data

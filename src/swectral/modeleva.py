@@ -1291,17 +1291,17 @@ class ModelEva:
                     #     ]
                     # )
                     # TODO: vectorized for large sample size and folds
-                    mask_not_shared = ~np.isin(validation_group_arr[te_only_ids], list(validation_groups_shared))
-                    te_only_ids_new = te_only_ids[mask_not_shared]
-                    if len(te_only_ids_new) > 0:
-                        te_new_chunk_size = len(te_only_ids_new) // len(dsp_inds_shared)
-                        te_new_remaind = len(te_only_ids_new) % len(dsp_inds_shared)
-                        te_new_start = 0
+                    if mask_te:
+                        mask_not_shared = ~np.isin(validation_group_arr[te_only_ids], list(validation_groups_shared))
+                        te_only_ids_new = te_only_ids[mask_not_shared]
+                        if len(te_only_ids_new) > 0:
+                            te_new_chunk_size = len(te_only_ids_new) // len(dsp_inds_shared)
+                            te_new_remaind = len(te_only_ids_new) % len(dsp_inds_shared)
+                            te_new_start = 0
                     # TODO: improved logic for validation groups
                     for i, ttpair in enumerate(dsp_inds_shared):
                         ids_tr = ids_shared[ttpair[0]]
                         ids_te = ids_shared[ttpair[1]]
-                        te_groups_shared = set(validation_group_arr[ids_te])
                         # TODO: tr_groups_shared = set(self.validation_group[ids_tr])
                         # Append test-only samples
                         if mask_te:
@@ -1316,6 +1316,7 @@ class ModelEva:
                             #     ]
                             # )
                             # TODO: vectorized for large sample size and folds
+                            te_groups_shared = set(validation_group_arr[ids_te])
                             mask_te_only_existed = np.isin(validation_group_arr[te_only_ids], list(te_groups_shared))
                             te_only_ids_i_existed = te_only_ids[mask_te_only_existed]
                             if len(te_only_ids_new) > 0:
@@ -1328,7 +1329,6 @@ class ModelEva:
                             ids_te = np.concatenate([ids_te, te_only_ids_i]).astype(int)
                             # ids_fold_dist[i] = te_only_ids_i.tolist()
                         # Append train-only samples
-                        te_groups_used = set(validation_group_arr[ids_te])
                         if mask_tr:
                             # tr_only_ids_i = np.array(
                             #     [
@@ -1339,6 +1339,7 @@ class ModelEva:
                             #     ]
                             # )
                             # TODO: vectorized for large sample size and folds
+                            te_groups_used = set(validation_group_arr[ids_te])
                             mask_tr_only_not_te = ~np.isin(validation_group_arr[tr_only_ids], list(te_groups_used))
                             tr_only_ids_i = tr_only_ids[mask_tr_only_not_te]
                             ids_tr = np.concatenate([ids_tr, tr_only_ids_i]).astype(int)
