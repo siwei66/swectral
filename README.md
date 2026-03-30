@@ -426,9 +426,9 @@ Parallel processes can be added with identical "data level" and "application seq
     Output:
     ```text
         Step_0   Step_1   Step_2  Precision  Recall  F1_Score  Accuracy    AUC
-    0  2_0_%#1  5_0_%#1  7_0_%#1   0.860000    0.84  0.842828     0.936  0.947
+    0  2_0_%#1  5_0_%#1  7_0_%#1       0.86    0.84      0.84      0.94   0.95
     ...
-    7  2_0_%#2  5_0_%#2  7_0_%#2   0.769524    0.72  0.684242     0.888  0.829
+    7  2_0_%#2  5_0_%#2  7_0_%#2       0.77    0.72      0.68      0.89   0.83
     ```
 
     Demonstration of marginal macro-average performance metrics of classification:
@@ -442,16 +442,19 @@ Parallel processes can be added with identical "data level" and "application seq
              Process_ID       All   2_0_%#1   2_0_%#2
     0     Process_label       All       snv       raw
     1         n_records         8         4         4
-    2    Mean_AUC_macro   0.85425   0.95275   0.75575
-    3     Min_AUC_macro     0.631     0.942     0.631
-    4  Median_AUC_macro     0.906    0.9495     0.761
+    2    Mean_AUC_macro      0.85      0.95      0.76
+    3     Min_AUC_macro      0.63      0.94      0.63
+    4  Median_AUC_macro      0.91      0.95      0.76
     5     Max_AUC_macro      0.97      0.97      0.87
-    6               All       1.0  0.199557  0.199557
-    7           2_0_%#1  0.199557       1.0  0.028571
-    8           2_0_%#2  0.199557  0.028571       1.0
+    6          p_vs_All      1.00      0.20      0.20
+    7          p_vs_raw      0.20      1.00      0.03
+    8          p_vs_snv      0.20      0.03      1.00
+    9     effect_vs_All      0.00      0.46      0.46
+    10    effect_vs_raw      0.46      0.00      0.94
+    11    effect_vs_snv      0.46      0.94      0.00
     ```
 
-    The processes of the step (here raw image and standard normal variates) are compared using non-parametric Mann-Whitney-U test.
+    The processes of the step (here raw image and standard normal variates) are compared using non-parametric Wilcoxon signed-rank test.
 
     Demonstration of Receiver-Operating-Characteristic curve:
 

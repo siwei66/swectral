@@ -1100,6 +1100,24 @@ def bandquant(
 # %% Common and custom statistical measures for 2D array-like
 
 
+# TODO: Helper: invalid measure
+@simple_type_validator
+def invalid_measure(
+    v: Annotated[Any, arraylike_validator(ndim=2, as_type=float)],
+    axis: Optional[int] = 0,
+    *args: object,
+    **kwargs: object,
+) -> np.ndarray:
+    if axis is None:
+        return np.nan
+    elif axis == 0:
+        return np.full(v.shape[1], np.nan, dtype=float)
+    elif axis == 1:
+        return np.full(v.shape[0], np.nan, dtype=float)
+    else:
+        raise ValueError(f"axis must be 0, 1 or None, got: {axis}")
+
+
 # Helper: stats measure opter
 @simple_type_validator
 def smopt(measure: str) -> Callable:  # noqa: C901
@@ -1559,7 +1577,12 @@ class Stats2d:
         # Validate sample size
         nsample = arr.shape[0]
         if nsample < 5:
-            raise ValueError(f"Sample size must be at least 5, got: {nsample}")
+            # raise ValueError(f"Sample size must be at least 5, got: {nsample}")
+            warnings.warn(
+                f"Sample size {nsample} could be too small for some statistical measures.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         # Stats configuration
         if measure is not None:
@@ -1588,6 +1611,10 @@ class Stats2d:
         else:
             mnames = ["mean", "std", "skewness", "kurtosis", "min", "median", "max"]
             mfuncs = [smopt(mn) for mn in mnames]
+            if nsample >= 3 and nsample < 5:
+                mfuncs = mfuncs[0:2] + [invalid_measure] * 2 + mfuncs[4:8]
+            if nsample < 3:
+                mfuncs = mfuncs[0:1] + [invalid_measure] * 3 + mfuncs[4:8]
 
         # Computing measures
         mvalues: dict = {}

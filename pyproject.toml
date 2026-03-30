@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swectral"
-version = "0.6.4"
+version = "0.6.5"
 description = "A Python framework for automated batch composition, implementation and method assessment of plant hyperspectral modeling pipelines."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -40,6 +40,7 @@ dependencies = [
     "torch>=2.0.0",
     "scikit-learn>=1.6.1",
     "scipy>=1.13.1",
+    "statsmodels>=0.14.6",
     "dill>=0.4.0",
     "matplotlib>=3.9.4",
     "beautifulsoup4>=4.12.2",

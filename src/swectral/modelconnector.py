@@ -1238,6 +1238,7 @@ def _convert_metrics_combined_model(metrics_dict: dict, modeleva_report_dir: str
 def combined_model_marginal_stats(
     report_directory: str,
     metrics_dict: Optional[dict[str, Any]] = None,
+    multitest_correction: Optional[str] = 'fdr_bh',
     *,
     _space_wait_timeout: int = 36000,
     _reserve_free_pct: float = 5.0,
@@ -1245,17 +1246,24 @@ def combined_model_marginal_stats(
     """
     Compute marginal model performance statistics on combined model components of the performance metrics from SpecPipe model evaluation reports.
 
+    See ``groupstats.performance_marginal_stats`` for computation of statistics for marginal performance comparisons.
+
     Parameters
     ----------
     pipeline_config_dir : str
         Root of SpecPipe report directory.
     metrics_dict: dict or None
-        Dictionary of performance summary from ``performance_metrics_summary``.
+        Dictionary of performance summary from ``groupstats.performance_metrics_summary``.
         If provided, the summary is skipped. Default is None.
+
+    See Also
+    --------
+    groupstats.performance_metrics_summary
+    groupstats.performance_marginal_stats
 
     Returns
     -------
-    dict[str, Any]
+    dict
         Dictionary of marginal model performance statistics on combined model components at each step.
     """  # noqa: E501
 
@@ -1307,6 +1315,7 @@ def combined_model_marginal_stats(
             pipeline_config_dir=pipeline_config_dir,
             model_evaluation_report_dir=model_evaluation_report_dir,
             validate_process=False,
+            multitest_correction=multitest_correction,
             _space_wait_timeout=_space_wait_timeout,
             _reserve_free_pct=_reserve_free_pct,
         )
@@ -1316,6 +1325,7 @@ def combined_model_marginal_stats(
             pipeline_config_dir=pipeline_config_dir,
             model_evaluation_report_dir=model_evaluation_report_dir,
             validate_process=False,
+            multitest_correction=multitest_correction,
             _space_wait_timeout=_space_wait_timeout,
             _reserve_free_pct=_reserve_free_pct,
         )

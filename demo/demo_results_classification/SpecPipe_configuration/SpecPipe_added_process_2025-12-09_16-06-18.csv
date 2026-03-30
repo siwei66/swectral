@@ -1,9 +1,0 @@
-ID,Process_label,Input_data_level,Output_data_level,Application_sequence,Method,Sequence_in_complete_process,Alternative_number
-2_0_%#1,,pixel_specs_array,pixel_specs_array,0,snv,2000000,1
-2_0_%#2,,pixel_specs_array,pixel_specs_array,0,raw,2000000,2
-5_0_%#1,,image_roi,spec1d,0,roi_mean,5000000,1
-5_0_%#2,,image_roi,spec1d,0,roi_median,5000000,2
-7_0_%#1,,spec1d,model,0,StandardScaler_feat5_KNeighborsClassifier,7000000,1
-7_0_%#2,,spec1d,model,0,StandardScaler_feat5_RandomForestClassifier,7000000,2
-7_0_%#3,,spec1d,model,0,StandardScaler_feat_all_KNeighborsClassifier,7000000,3
-7_0_%#4,,spec1d,model,0,StandardScaler_feat_all_RandomForestClassifier,7000000,4

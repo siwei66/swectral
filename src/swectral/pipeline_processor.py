@@ -1098,7 +1098,7 @@ def _sample_list_constructor(  # noqa: C901
 
     ## Loop preprocess chains across all samples and transform to modeling data
     if show_progress:
-        print("\nConstruct chain sample list ...\nChain :")
+        print("\n\nConstruct chain sample list ...\nChain :")
     # pci - process chain id
     pre_results: list[
         tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any, arraylike_validator(ndim=1)]]

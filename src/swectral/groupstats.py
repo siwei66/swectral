@@ -20,7 +20,8 @@ import numpy as np
 from typing import Optional, Any
 
 # Statistics
-from scipy.stats import mannwhitneyu
+from statsmodels.stats.multitest import multipletests
+from scipy.stats import wilcoxon, brunnermunzel, norm
 
 # Local
 from .roistats import Stats2d
@@ -459,24 +460,26 @@ def process_id_label_lookup_dict(process_config_df: pd.DataFrame) -> tuple[dict[
     return (proc_id_to_label, proc_label_to_id)
 
 
-def process_id_to_label(process_id: str, proc_id_to_label: dict, ignore: bool = False) -> str:
+def process_id_to_label(process_id: str, proc_id_to_label: dict, ignore_err: bool = False) -> str:
     """
-    Convert unique SpecPipe process ID to process label. If ignore True, return input if input is not id.
-    "process_config_df" is the SpecPipe_added_process.csv in the configuration subdir.
+    Convert unique SpecPipe process ID to process label.
+    "proc_id_to_label" is process ID to label dict from the SpecPipe_added_process.csv in the configuration subdir.
+    If ignore_err True, return input if input is not a valid process ID.
     """
     if process_id in proc_id_to_label.keys():
         process_label = str(proc_id_to_label[process_id])
         return process_label
-    elif not ignore:
+    elif not ignore_err:
         raise ValueError(f"No process label or method name found for given ID: {process_id}")
     else:
         return process_id
 
 
-def process_label_to_id(process_label: str, proc_label_to_id: dict) -> str:
+def process_label_to_id(process_label: str, proc_label_to_id: dict, ignore_err: bool = False) -> str:
     """
     Convert unique SpecPipe process label to process ID.
-    "process_config_df" is the SpecPipe_added_process.csv in the configuration subdir.
+    "proc_label_to_id" is process label to ID dict from the SpecPipe_added_process.csv in the configuration subdir.
+    If ignore_err True, return input if input is not a valid process label.
     """
     # Validate whether the process_label is ID, return if it's ID
     if "_%#" in process_label:
@@ -495,8 +498,30 @@ def process_label_to_id(process_label: str, proc_label_to_id: dict) -> str:
     if process_label in proc_label_to_id.keys():
         process_id = str(proc_label_to_id[process_label])
         return process_id
-    else:
+    elif not ignore_err:
         raise ValueError(f"No process ID found for given label: {process_label}")
+    else:
+        return process_label
+
+
+# %% Rank_Biserial for effect size for marginal performance comparison
+
+
+@simple_type_validator
+def calculate_rank_biserial(test_res: object, n: int) -> float:
+    """Compute Rank Biserial from statistical tests."""
+    # Get exact, tie-corrected z-statistic
+    z_stat: Optional[float] = getattr(test_res, 'zstatistic', None)
+
+    # Fallback to normal approximation
+    if z_stat is None:
+        assert hasattr(test_res, "pvalue"), "Missing attribute 'pvalue' in the given test result"
+        if test_res.pvalue >= 1.0 or np.isnan(test_res.pvalue):
+            return 0.0 if not np.isnan(test_res.pvalue) else np.nan
+        z_stat = abs(norm.ppf(max(test_res.pvalue, 1e-15) / 2.0))
+
+    result: float = abs(z_stat) / np.sqrt(n)
+    return result
 
 
 # %% Model performance summary and marginal performance statistics
@@ -806,6 +831,7 @@ def regression_performance_marginal_stats(  # noqa: C901
     pipeline_config_dir: str,
     model_evaluation_report_dir: str,
     validate_process: bool = True,
+    multitest_correction: Optional[str] = 'fdr_bh',
     *,
     _space_wait_timeout: int = 36000,
     _reserve_free_pct: float = 5.0,
@@ -822,6 +848,17 @@ def regression_performance_marginal_stats(  # noqa: C901
     df_cid = metrics_dict["chains_in_ID"]
     df_reg_metrics = metrics_dict["regression_metrics"]
     config_dir = pipeline_config_dir
+
+    # TODO: Validate multitest_correction
+    if multitest_correction is not None:
+        multitest_methods = [
+            'bonferroni', 'sidak', 'holm-sidak', 'holm', 'simes-hochberg', 'hommel',
+            'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky',
+        ]
+        if multitest_correction.lower() not in multitest_methods:
+            raise ValueError(f"multitest_correction must be 'fdr' or 'bonferroni', got: {multitest_correction}")
+        else:
+            multitest_correction = multitest_correction.lower()
 
     # Load config and create a lookup dictionary
     # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
@@ -851,9 +888,13 @@ def regression_performance_marginal_stats(  # noqa: C901
 
         # Pre-allocate matrix for faster numpy location
         num_stats_rows = 6
-        num_mwu_rows = len(all_ids)
-        matrix_r2 = np.empty((num_stats_rows + num_mwu_rows, len(all_ids)), dtype=object)
+        num_test_rows = len(all_ids)
+        # TODO: Doubled num_test_rows for effect size matrix
+        matrix_r2 = np.empty((num_stats_rows + num_test_rows * 2, len(all_ids)), dtype=object)
 
+        # TODO: new, corrected wilcoxon
+        test_pvals = []
+        p_value_coordinates = []
         for col_idx, pid1 in enumerate(all_ids):
             r2_1 = group_r2[pid1]
 
@@ -861,7 +902,7 @@ def regression_performance_marginal_stats(  # noqa: C901
             if pid1 == 'All':
                 matrix_r2[0, col_idx] = "All"
             else:
-                label_val = process_id_to_label(pid1, proc_id_to_label, ignore=(not validate_process))
+                label_val = process_id_to_label(pid1, proc_id_to_label, ignore_err=(not validate_process))
                 matrix_r2[0, col_idx] = label_val
 
             # Stats rows
@@ -878,16 +919,75 @@ def regression_performance_marginal_stats(  # noqa: C901
                     # Identity cases
                     if pid1 == pid2:
                         matrix_r2[row_offset + 6, col_idx] = 1.0
+                        # TODO: Set effect size for identical procs
+                        matrix_r2[row_offset + 6 + len(all_ids), col_idx] = 0.0
                     else:
-                        matrix_r2[row_offset + 6, col_idx] = mannwhitneyu(r2_1, r2_2)[1]
+                        # Only run the test for unique pairs
+                        if col_idx < row_offset:
+                            # Wilcoxon p-value
+                            if len(r2_1) == len(r2_2):
+                                try:
+                                    # Wilcoxon for paired
+                                    test_res = wilcoxon(r2_1, r2_2, method="auto")
+                                    pval = test_res.pvalue
+                                    # Effect size for Wilcoxon
+                                    n_pairs = len(r2_1)
+                                    effect_size = calculate_rank_biserial(test_res=test_res, n=n_pairs)
+                                except ValueError:
+                                    pval, effect_size = 1.0, 0.0
+                            else:
+                                # Brunner-Munzel as fallback
+                                test_res = brunnermunzel(r2_1, r2_2, nan_policy='omit')
+                                pval = test_res.pvalue
+                                # Effect size for Brunner-Munzel
+                                n_total = len(r2_1) + len(r2_2)
+                                effect_size = calculate_rank_biserial(test_res=test_res, n=n_total)
+
+                            # Store the uncorrected p-value and mirror
+                            matrix_r2[row_offset + 6, col_idx] = pval
+                            matrix_r2[col_idx + 6, row_offset] = pval
+
+                            # Store the effect size and mirror
+                            matrix_r2[row_offset + 6 + len(all_ids), col_idx] = effect_size
+                            matrix_r2[col_idx + 6 + len(all_ids), row_offset] = effect_size
+
+                            # Collect the p-value and coordinates
+                            test_pvals.append(pval)
+                            p_value_coordinates.append(((row_offset + 6, col_idx), (col_idx + 6, row_offset)))
                 else:
                     matrix_r2[row_offset + 6, col_idx] = np.nan
+                    matrix_r2[row_offset + 6 + len(all_ids), col_idx] = np.nan
+
+        # Check whether correction needed
+        if len(all_ids) > 2 and test_pvals:
+            if multitest_correction is not None:
+                # Apply correction
+                corrected_pvals = multipletests(test_pvals, method=multitest_correction)[1]
+            else:
+                corrected_pvals = test_pvals
+
+            # Map corrected p back
+            for coords, corrected_pval in zip(p_value_coordinates, corrected_pvals):
+                coord1, coord2 = coords
+                matrix_r2[coord1[0], coord1[1]] = corrected_pval
+                matrix_r2[coord2[0], coord2[1]] = corrected_pval
 
         # Construct DataFrames from matrices
         step_gstats_r2 = pd.DataFrame(matrix_r2, columns=all_ids)
 
+        # Row labels
+        p_vs_labels = [
+            f"p_vs_{'All' if pid == 'All' else process_id_to_label(pid, proc_id_to_label, ignore_err=(not validate_process))}"  # noqa: E501
+            for pid in all_ids
+        ]
+        effect_vs_labels = [
+            f"effect_vs_{'All' if pid == 'All' else process_id_to_label(pid, proc_id_to_label, ignore_err=(not validate_process))}"  # noqa: E501
+            for pid in all_ids
+        ]
+
         # Add Process_ID column with original string identifiers
-        desc_col = ["Process_label", "n_records", "Mean_R2", "Min_R2", "Median_R2", "Max_R2"] + all_ids
+        desc_col = ["Process_label", "n_records", "Mean_R2", "Min_R2", "Median_R2", "Max_R2"] \
+            + p_vs_labels + effect_vs_labels
         step_gstats_r2.insert(0, "Process_ID", desc_col)
 
         # Collect step result
@@ -966,6 +1066,7 @@ def classification_performance_marginal_stats(  # noqa: C901
     pipeline_config_dir: str,
     model_evaluation_report_dir: str,
     validate_process: bool = True,
+    multitest_correction: Optional[str] = 'fdr_bh',
     *,
     _space_wait_timeout: int = 36000,
     _reserve_free_pct: float = 5.0,
@@ -982,6 +1083,17 @@ def classification_performance_marginal_stats(  # noqa: C901
     df_macro_metrics = metrics_dict["macro_metrics"]
     df_micro_metrics = metrics_dict["micro_metrics"]
     config_dir = pipeline_config_dir
+
+    # TODO: Validate multitest_correction
+    if multitest_correction is not None:
+        multitest_methods = [
+            'bonferroni', 'sidak', 'holm-sidak', 'holm', 'simes-hochberg', 'hommel',
+            'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky',
+        ]
+        if multitest_correction.lower() not in multitest_methods:
+            raise ValueError(f"multitest_correction must be 'fdr' or 'bonferroni', got: {multitest_correction}")
+        else:
+            multitest_correction = multitest_correction.lower()
 
     # Load config and create a lookup dictionary
     # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
@@ -1008,11 +1120,17 @@ def classification_performance_marginal_stats(  # noqa: C901
         group_micauc = {'All': list(df_micro_metrics["AUC"])}
         group_micauc.update(grouped_micro)
 
-        # Pre-allocate matrix for faster numpy location
-        num_rows = 6 + len(all_ids)
-        matrix_macauc = np.empty((num_rows, len(all_ids)), dtype=object)
-        matrix_micauc = np.empty((num_rows, len(all_ids)), dtype=object)
+        # TODO: Pre-allocate matrix for faster numpy location
+        num_stats_rows = 6
+        num_test_rows = len(all_ids)
+        matrix_macauc = np.empty((num_stats_rows + num_test_rows * 2, len(all_ids)), dtype=object)
+        matrix_micauc = np.empty((num_stats_rows + num_test_rows * 2, len(all_ids)), dtype=object)
 
+        # TODO: new, corrected wilcoxon
+        test_pvals_mac = []
+        p_value_coords_mac = []
+        test_pvals_mic = []
+        p_value_coords_mic = []
         for col_idx, pid1 in enumerate(all_ids):
             mac_1, mic_1 = group_macauc[pid1], group_micauc[pid1]
 
@@ -1021,7 +1139,7 @@ def classification_performance_marginal_stats(  # noqa: C901
                 matrix_macauc[0, col_idx] = "All"
                 matrix_micauc[0, col_idx] = "All"
             else:
-                label_val = process_id_to_label(pid1, proc_id_to_label, ignore=(not validate_process))
+                label_val = process_id_to_label(pid1, proc_id_to_label, ignore_err=(not validate_process))
                 matrix_macauc[0, col_idx] = label_val
                 matrix_micauc[0, col_idx] = label_val
 
@@ -1038,19 +1156,116 @@ def classification_performance_marginal_stats(  # noqa: C901
                 if len(step_process_ids) > 1:
                     # Identity cases
                     if pid1 == pid2:
-                        p_mac, p_mic = 1.0, 1.0
+                        matrix_macauc[row_offset + 6, col_idx] = 1.0
+                        matrix_micauc[row_offset + 6, col_idx] = 1.0
+                        matrix_macauc[row_offset + 6 + len(all_ids), col_idx] = 0.0
+                        matrix_micauc[row_offset + 6 + len(all_ids), col_idx] = 0.0
                     else:
-                        p_mac = mannwhitneyu(mac_1, group_macauc[pid2])[1]
-                        p_mic = mannwhitneyu(mic_1, group_micauc[pid2])[1]
-                    matrix_macauc[row_offset + 6, col_idx] = p_mac
-                    matrix_micauc[row_offset + 6, col_idx] = p_mic
+                        # Only run the test for unique pairs
+                        if col_idx < row_offset:
+                            mac_2, mic_2 = group_macauc[pid2], group_micauc[pid2]
+
+                            # Test macro measure
+                            if len(mac_1) == len(mac_2):
+                                try:
+                                    # Wilcoxon p-value
+                                    res_mac = wilcoxon(mac_1, mac_2, method="auto")
+                                    p_mac = res_mac.pvalue
+                                    n_pairs_mac = len(mac_1)
+                                    eff_mac = calculate_rank_biserial(test_res=res_mac, n=n_pairs_mac)
+                                except ValueError:
+                                    p_mac, eff_mac = 1.0, 0.0
+                            else:
+                                # Brunner-Munzel as fallback
+                                res_mac = brunnermunzel(mac_1, mac_2, nan_policy='omit')
+                                p_mac = res_mac.pvalue
+                                n_total_mac = len(mac_1) + len(mac_2)
+                                eff_mac = calculate_rank_biserial(test_res=res_mac, n=n_total_mac)
+
+                            # Test micro measure
+                            if len(mic_1) == len(mic_2):
+                                try:
+                                    # Wilcoxon p-value
+                                    res_mic = wilcoxon(mic_1, mic_2, method="auto")
+                                    p_mic = res_mic.pvalue
+                                    n_pairs_mic = len(mic_1)
+                                    eff_mic = calculate_rank_biserial(test_res=res_mic, n=n_pairs_mic)
+                                except ValueError:
+                                    p_mic, eff_mic = 1.0, 0.0
+                            else:
+                                # Brunner-Munzel as fallback
+                                res_mic = brunnermunzel(mic_1, mic_2, nan_policy='omit')
+                                p_mic = res_mic.pvalue
+                                n_total_mic = len(mic_1) + len(mic_2)
+                                eff_mic = calculate_rank_biserial(test_res=res_mic, n=n_total_mic)
+
+                            # Store uncorrected p-values and mirror for macro
+                            matrix_macauc[row_offset + 6, col_idx] = p_mac
+                            matrix_macauc[col_idx + 6, row_offset] = p_mac
+                            test_pvals_mac.append(p_mac)
+                            p_value_coords_mac.append(((row_offset + 6, col_idx), (col_idx + 6, row_offset)))
+
+                            # Store effect sizes and mirror for macro
+                            matrix_macauc[row_offset + 6 + len(all_ids), col_idx] = eff_mac
+                            matrix_macauc[col_idx + 6 + len(all_ids), row_offset] = eff_mac
+
+                            # Store uncorrected p-values and mirror for micro
+                            matrix_micauc[row_offset + 6, col_idx] = p_mic
+                            matrix_micauc[col_idx + 6, row_offset] = p_mic
+                            test_pvals_mic.append(p_mic)
+                            p_value_coords_mic.append(((row_offset + 6, col_idx), (col_idx + 6, row_offset)))
+
+                            # Store effect sizes and mirror for micro
+                            matrix_micauc[row_offset + 6 + len(all_ids), col_idx] = eff_mic
+                            matrix_micauc[col_idx + 6 + len(all_ids), row_offset] = eff_mic
+
                 else:
                     matrix_macauc[row_offset + 6, col_idx] = np.nan
                     matrix_micauc[row_offset + 6, col_idx] = np.nan
+                    matrix_macauc[row_offset + 6 + len(all_ids), col_idx] = np.nan
+                    matrix_micauc[row_offset + 6 + len(all_ids), col_idx] = np.nan
+
+        # Check whether correction needed
+        if len(all_ids) > 2:
+            # Macro AUC correction
+            if test_pvals_mac:
+                if multitest_correction is not None:
+                    corrected_mac = multipletests(test_pvals_mac, method=multitest_correction)[1]
+                else:
+                    corrected_mac = test_pvals_mac
+
+                # Map corrected p back
+                for coords, pval in zip(p_value_coords_mac, corrected_mac):
+                    coord1, coord2 = coords
+                    matrix_macauc[coord1[0], coord1[1]] = pval
+                    matrix_macauc[coord2[0], coord2[1]] = pval
+
+            # Micro AUC correction
+            if test_pvals_mic:
+                if multitest_correction is not None:
+                    corrected_mic = multipletests(test_pvals_mic, method=multitest_correction)[1]
+                else:
+                    corrected_mic = test_pvals_mic
+
+                # Map corrected p back
+                for coords, pval in zip(p_value_coords_mic, corrected_mic):
+                    coord1, coord2 = coords
+                    matrix_micauc[coord1[0], coord1[1]] = pval
+                    matrix_micauc[coord2[0], coord2[1]] = pval
 
         # Construct DataFrames from matrices
         step_gstats_macauc = pd.DataFrame(matrix_macauc, columns=all_ids)
         step_gstats_micauc = pd.DataFrame(matrix_micauc, columns=all_ids)
+
+        # Row labels
+        p_vs_labels = [
+            f"p_vs_{'All' if pid == 'All' else process_id_to_label(pid, proc_id_to_label, ignore_err=(not validate_process))}"
+            for pid in all_ids
+        ]
+        effect_vs_labels = [
+            f"effect_vs_{'All' if pid == 'All' else process_id_to_label(pid, proc_id_to_label, ignore_err=(not validate_process))}"
+            for pid in all_ids
+        ]
 
         # Add Process_ID column with original string identifiers
         desc_mac = [
@@ -1060,7 +1275,7 @@ def classification_performance_marginal_stats(  # noqa: C901
             "Min_AUC_macro",
             "Median_AUC_macro",
             "Max_AUC_macro",
-        ] + all_ids
+        ] + p_vs_labels + effect_vs_labels
         desc_mic = [
             "Process_label",
             "n_records",
@@ -1068,7 +1283,7 @@ def classification_performance_marginal_stats(  # noqa: C901
             "Min_AUC_micro",
             "Median_AUC_micro",
             "Max_AUC_micro",
-        ] + all_ids
+        ] + p_vs_labels + effect_vs_labels
 
         step_gstats_macauc.insert(0, "Process_ID", desc_mac)
         step_gstats_micauc.insert(0, "Process_ID", desc_mic)
@@ -1189,12 +1404,17 @@ def classification_performance_marginal_stats(  # noqa: C901
 def performance_marginal_stats(
     report_directory: str,
     metrics_dict: Optional[dict[str, Any]] = None,
+    multitest_correction: Optional[str] = 'fdr_bh',
     *,
     _space_wait_timeout: int = 36000,
     _reserve_free_pct: float = 5.0,
 ) -> dict[str, Any]:
     """
     Compute marginal model performance statistics and summary of model performance metrics from SpecPipe model evaluation reports.
+
+    If all full-factorial processing chains are retained, p-values assessing the significance of marginal performance differences are computed using the Wilcoxon signed-rank test.
+    If only a subset of chains is selected, p-values are instead computed using the Brunner–Munzel test.
+    Effect sizes for both tests are reported as rank-biserial correlations.
 
     Parameters
     ----------
@@ -1203,10 +1423,13 @@ def performance_marginal_stats(
     metrics_dict: dict or None
         Dictionary of performance summary from ``performance_metrics_summary``.
         If provided, the summary is skipped. Default is None.
+    multitest_correction: str or None
+        Method used for adjustment of significance test p-values.
+        See ``statsmodels.stats.multitest.multipletests`` for available options.
 
     Returns
     -------
-    dict[str, Any]
+    dict
         Dictionary of marginal model performance statistics and summary of model performance metrics at each step.
     """  # noqa: E501
     pipeline_config_dir = f"{report_directory}/SpecPipe_configuration/"
@@ -1252,6 +1475,7 @@ def performance_marginal_stats(
             metrics_dict,
             pipeline_config_dir,
             model_evaluation_report_dir,
+            multitest_correction=multitest_correction,
             _space_wait_timeout=_space_wait_timeout,
             _reserve_free_pct=_reserve_free_pct,
         )
@@ -1260,6 +1484,7 @@ def performance_marginal_stats(
             metrics_dict,
             pipeline_config_dir,
             model_evaluation_report_dir,
+            multitest_correction=multitest_correction,
             _space_wait_timeout=_space_wait_timeout,
             _reserve_free_pct=_reserve_free_pct,
         )

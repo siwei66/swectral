@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath('../../src'))
 project = 'Swectral'
 copyright = '2025, Siwei Luo'
 author = 'Siwei Luo'
-release = '0.6.4'
+release = '0.6.5'
 
 # -- Sphinx extensions -------------------------------------------------------
 
@@ -110,6 +110,7 @@ html_css_files = [
     "index.css",
 ]
 html_show_sourcelink = False
+html_favicon = "_static/favicon.ico"
 
 # -- Intersphinx mapping -----------------------------------------------------
 # Provides automatic cross-references to external docs for these libraries
@@ -117,6 +118,8 @@ html_show_sourcelink = False
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "statsmodels": ("https://www.statsmodels.org/stable/", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "torch": ("https://pytorch.org/docs/stable/", None),

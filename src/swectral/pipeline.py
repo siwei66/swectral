@@ -3739,7 +3739,7 @@ class SpecPipe:
 
         # Start preprocessing
         if show_progress:
-            print("\nPreprocess samples ...")
+            print("\n\nPreprocess samples ...")
 
         # Pipeline progress observation for multiprocessing
         step_file_root = unc_path(self.report_directory + "Preprocessing/Step_results/Intermediate_step_results/")
@@ -4296,6 +4296,7 @@ class SpecPipe:
         show_progress: bool = True,
         save_config: bool = True,
         summary: bool = True,
+        multitest_correction: Optional[str] = 'fdr_bh',
         check_space: bool = True,
     ) -> None:
         """
@@ -4338,6 +4339,10 @@ class SpecPipe:
             Marginal performance metrics at each processing step is compared using the Mann–Whitney U test.
             Default is True.
 
+        multitest_correction: str or None
+            Method used for adjustment of significance test p-values.
+            See ``statsmodels.stats.multitest.multipletests`` for available options.
+
         check_space : bool, optional
             Whether to validate available disk space against the estimated output size.
             If True, an error is raised when the estimate exceeds the available space.
@@ -4352,6 +4357,9 @@ class SpecPipe:
         preprocessing
         assembly
         run
+        groupstats.performance_metrics_summary
+        groupstats.performance_marginal_stats
+        modelconnector.combined_model_marginal_stats
 
         Examples
         --------
@@ -4532,6 +4540,7 @@ class SpecPipe:
             n_chains = len(self.ls_chains(print_label=False))
             model_subdir_pattern = "Data_chain_Preprocessing_#"
             # Progress observing process by model subdirs
+            print("\n\n")
             observer = DirProgressObserver(
                 root=model_subdir_root,
                 total=n_chains,
@@ -4656,12 +4665,14 @@ class SpecPipe:
             _ = performance_marginal_stats(
                 report_directory=self.report_directory,
                 metrics_dict=metrics_dict,
+                multitest_correction=multitest_correction,
                 _space_wait_timeout=self.space_wait_timeout,
                 _reserve_free_pct=self.reserve_free_pct,
             )
             _ = combined_model_marginal_stats(
                 report_directory=self.report_directory,
                 metrics_dict=metrics_dict,
+                multitest_correction=multitest_correction,
                 _space_wait_timeout=self.space_wait_timeout,
                 _reserve_free_pct=self.reserve_free_pct,
             )
@@ -4708,6 +4719,7 @@ class SpecPipe:
         show_progress: bool = True,
         save_config: bool = True,
         summary: bool = True,
+        multitest_correction: Optional[str] = 'fdr_bh',
         geo_reference_warning: bool = False,
         model_test_coverage: float = 1.0,
         assembly_test_coverage: float = 1.0,
@@ -4793,6 +4805,10 @@ class SpecPipe:
             Whether to summarize preprocessed data, performance metrics, and marginal performance metrics.
             Marginal performance at each step is compared using the Mann–Whitney U test.
             Default is True.
+
+        multitest_correction: str or None
+            Method used for adjustment of significance test p-values.
+            See ``statsmodels.stats.multitest.multipletests`` for available options.
 
         geo_reference_warning : bool, optional
             Whether to suppress GeoReferenceWarning messages.
@@ -4920,6 +4936,7 @@ class SpecPipe:
                 show_progress=show_progress,
                 save_config=False,
                 summary=summary,
+                multitest_correction=multitest_correction,
                 check_space=check_space,
             )
         else:
