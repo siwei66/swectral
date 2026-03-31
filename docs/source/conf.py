@@ -92,8 +92,9 @@ exclude_patterns = [
 # -- Linkcheck configuration -------------------------------------------------
 linkcheck_ignore = [
     r'https://doi\.org/.*',
-    r'https://docs\.scipy\.org/.*',
+    # r'https://docs\.scipy\.org/.*',
 ]
+linkcheck_report_timeouts_as_broken = False
 
 # -- HTML output -------------------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -119,7 +120,7 @@ html_favicon = "_static/favicon.ico"
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    # "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "statsmodels": ("https://www.statsmodels.org/stable/", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
     "sklearn": ("https://scikit-learn.org/stable/", None),
