@@ -1109,7 +1109,7 @@ def invalid_measure(
     **kwargs: object,
 ) -> Union[np.ndarray, float]:
     if axis is None:
-        result = np.nan
+        return np.nan
     elif axis == 0:
         result = np.full(v.shape[1], np.nan, dtype=float)
     elif axis == 1:

@@ -91,7 +91,8 @@ exclude_patterns = [
 
 # -- Linkcheck configuration -------------------------------------------------
 linkcheck_ignore = [
-    r'https://doi\.org/.*'
+    r'https://doi\.org/.*',
+    r'https://docs\.scipy\.org/.*',
 ]
 
 # -- HTML output -------------------------------------------------------------
