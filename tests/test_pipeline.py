@@ -8,6 +8,7 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 # OS
 import os
 import sys
+import warnings
 
 # from copy import deepcopy
 
@@ -1697,8 +1698,8 @@ class TestSpecPipe(unittest.TestCase):
 
     @staticmethod
     @silent
-    def test_run_pipe_edge_cases() -> None:
-        """test edge cases in running preprocessing and modeling functionality using SpecPipe.run()"""
+    def test_run_pipe_with_validation_group() -> None:
+        """test running preprocessing and modeling functionalities using SpecPipe.run() with validation groups."""
 
         if os.getenv("SPECPIPE_PREPROCESS_RESUME_TEST_NUM") is not None:
             del os.environ["SPECPIPE_PREPROCESS_RESUME_TEST_NUM"]
@@ -1715,7 +1716,15 @@ class TestSpecPipe(unittest.TestCase):
 
         pipe = create_test_spec_pipe(test_dir, sample_n=12, is_regression=True, use_val_group=True)
 
-        pipe.run(n_processor=1)
+        with warnings.catch_warnings():
+            # Ignore Scipy Wilcoxon warnings in this edge case
+            warnings.filterwarnings(
+                "ignore", message=".*Sample size too small for normal approximation.*", category=UserWarning
+            )
+            warnings.filterwarnings(
+                "ignore", message=".*Exact p-value calculation does not work if there are zeros.*", category=UserWarning
+            )
+            pipe.run(n_processor=1)
         time.sleep(0.1)
 
         finished_1 = TestSpecPipe.criteria_preprocessing_result(pipe)
@@ -1738,7 +1747,15 @@ class TestSpecPipe(unittest.TestCase):
 
         pipe = create_test_spec_pipe(test_dir, sample_n=12, is_regression=False, use_val_group=True)
 
-        pipe.run(n_processor=1)
+        with warnings.catch_warnings():
+            # Ignore Scipy Wilcoxon warnings in this edge case
+            warnings.filterwarnings(
+                "ignore", message=".*Sample size too small for normal approximation.*", category=UserWarning
+            )
+            warnings.filterwarnings(
+                "ignore", message=".*Exact p-value calculation does not work if there are zeros.*", category=UserWarning
+            )
+            pipe.run(n_processor=1)
         time.sleep(0.1)
 
         finished_3 = TestSpecPipe.criteria_preprocessing_result(pipe)
@@ -1755,7 +1772,15 @@ class TestSpecPipe(unittest.TestCase):
             test_dir, sample_n=12, is_regression=True, use_val_group=True, validation_method="loo"
         )
 
-        pipe.run(n_processor=1)
+        with warnings.catch_warnings():
+            # Ignore Scipy Wilcoxon warnings in this edge case
+            warnings.filterwarnings(
+                "ignore", message=".*Sample size too small for normal approximation.*", category=UserWarning
+            )
+            warnings.filterwarnings(
+                "ignore", message=".*Exact p-value calculation does not work if there are zeros.*", category=UserWarning
+            )
+            pipe.run(n_processor=1)
         time.sleep(0.1)
 
         finished_1 = TestSpecPipe.criteria_preprocessing_result(pipe)
@@ -1780,7 +1805,15 @@ class TestSpecPipe(unittest.TestCase):
             test_dir, sample_n=12, is_regression=False, use_val_group=True, validation_method="loo"
         )
 
-        pipe.run(n_processor=1)
+        with warnings.catch_warnings():
+            # Ignore Scipy Wilcoxon warnings in this edge case
+            warnings.filterwarnings(
+                "ignore", message=".*Sample size too small for normal approximation.*", category=UserWarning
+            )
+            warnings.filterwarnings(
+                "ignore", message=".*Exact p-value calculation does not work if there are zeros.*", category=UserWarning
+            )
+            pipe.run(n_processor=1)
         time.sleep(0.1)
 
         finished_3 = TestSpecPipe.criteria_preprocessing_result(pipe)

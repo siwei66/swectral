@@ -507,21 +507,84 @@ def process_label_to_id(process_label: str, proc_label_to_id: dict, ignore_err: 
 # %% Rank_Biserial for effect size for marginal performance comparison
 
 
+# TODO: Compute rank-biserial correlation for effect size from Wilcoxon and Brunner-Munzel tests
 @simple_type_validator
-def calculate_rank_biserial(test_res: object, n: int) -> float:
+def calculate_rank_biserial(test_res: object, n: int, is_paired: bool = True) -> float:
     """Compute Rank Biserial from statistical tests."""
     # Get exact, tie-corrected z-statistic
     z_stat: Optional[float] = getattr(test_res, 'zstatistic', None)
 
     # Fallback to normal approximation
     if z_stat is None:
+        if is_paired and hasattr(test_res, 'statistic'):
+            S = n * (n + 1) / 2  # noqa: N806
+            result: float = abs(S - 2 * test_res.statistic) / S
+            assert isinstance(result, float)
+            return result
         assert hasattr(test_res, "pvalue"), "Missing attribute 'pvalue' in the given test result"
         if test_res.pvalue >= 1.0 or np.isnan(test_res.pvalue):
-            return 0.0 if not np.isnan(test_res.pvalue) else np.nan
+            if not np.isnan(test_res.pvalue):
+                result = 0.0
+            else:
+                result = np.nan
+            return result
         z_stat = abs(norm.ppf(max(test_res.pvalue, 1e-15) / 2.0))
 
-    result: float = abs(z_stat) / np.sqrt(n)
+    result = abs(z_stat) / np.sqrt(n)
     return result
+
+
+# TODO: Run edge-case-protected Wilcoxon and Brunner-Munzel tests and compute effect size
+def protected_stats_test(v1: list[float], v2: list[float]) -> tuple[float, float]:
+    """
+    Perform scale-aware Wilcoxon signed-rank test and Brunner-Munzel test for pvalue,
+    and compute rank-biserial correlation for effect sizes.
+    Return (p-value, effect-size).
+    Guards against value ties, Scipy RuntimeWarnings and UserWarnings of small sample sizes.
+    """
+    n1: int = len(v1)
+    n2: int = len(v2)
+
+    if n1 == n2:
+        # Wilcoxon for paired
+        # Guard divide-by-zero
+        if n1 < 2:
+            return np.nan, np.nan
+
+        # Pre-screen for zeros and ties
+        diffs = [a - b for a, b in zip(v1, v2)]
+        non_zero_diffs = [d for d in diffs if d != 0.0]
+        if len(non_zero_diffs) == 0:
+            return 1.0, 0.0
+        has_zeros = len(non_zero_diffs) < n1
+        abs_diffs = [abs(d) for d in non_zero_diffs]
+        has_ties = len(set(abs_diffs)) < len(abs_diffs)
+
+        # For small sample size
+        if n1 < 50 and not has_zeros and not has_ties:
+            test_res = wilcoxon(v1, v2, method='exact')
+            pval = float(test_res.pvalue)
+            effect_size = calculate_rank_biserial(test_res=test_res, n=n1, is_paired=True)
+            return pval, effect_size
+
+        # For large sample size and sample with ties or zeros
+        else:
+            test_res = wilcoxon(v1, v2, method='approx')
+            pval = float(test_res.pvalue)
+            effect_size = calculate_rank_biserial(test_res=test_res, n=n1, is_paired=True)
+            return pval, effect_size
+
+    else:
+        # Fallback to Brunner-Munzel
+        # Guard divide-by-zero
+        if n1 < 2 or n2 < 2:
+            return np.nan, np.nan
+
+        test_res = brunnermunzel(v1, v2, nan_policy='omit')
+        pval = float(test_res.pvalue)
+        n_total = n1 + n2
+        effect_size = calculate_rank_biserial(test_res=test_res, n=n_total, is_paired=False)
+        return pval, effect_size
 
 
 # %% Model performance summary and marginal performance statistics
@@ -818,10 +881,10 @@ def performance_metrics_summary(  # noqa: C901
         return metrics_dict
     else:
         raise ValueError(
-            f"Got corrupted performance data:\n\n\
-                         metrics_micro: {metrics_micro}\n\n\
-                         metrics_macro: {metrics_macro}\n\n\
-                         metrics_macro: {metrics_reg}"
+            "Got corrupted performance data:\n\n"
+            f"metrics_micro: {metrics_micro}\n\n"
+            f"metrics_macro: {metrics_macro}\n\n"
+            f"metrics_macro: {metrics_reg}"
         )
 
 
@@ -852,8 +915,16 @@ def regression_performance_marginal_stats(  # noqa: C901
     # TODO: Validate multitest_correction
     if multitest_correction is not None:
         multitest_methods = [
-            'bonferroni', 'sidak', 'holm-sidak', 'holm', 'simes-hochberg', 'hommel',
-            'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky',
+            'bonferroni',
+            'sidak',
+            'holm-sidak',
+            'holm',
+            'simes-hochberg',
+            'hommel',
+            'fdr_bh',
+            'fdr_by',
+            'fdr_tsbh',
+            'fdr_tsbky',
         ]
         if multitest_correction.lower() not in multitest_methods:
             raise ValueError(f"multitest_correction must be 'fdr' or 'bonferroni', got: {multitest_correction}")
@@ -924,24 +995,8 @@ def regression_performance_marginal_stats(  # noqa: C901
                     else:
                         # Only run the test for unique pairs
                         if col_idx < row_offset:
-                            # Wilcoxon p-value
-                            if len(r2_1) == len(r2_2):
-                                try:
-                                    # Wilcoxon for paired
-                                    test_res = wilcoxon(r2_1, r2_2, method="auto")
-                                    pval = test_res.pvalue
-                                    # Effect size for Wilcoxon
-                                    n_pairs = len(r2_1)
-                                    effect_size = calculate_rank_biserial(test_res=test_res, n=n_pairs)
-                                except ValueError:
-                                    pval, effect_size = 1.0, 0.0
-                            else:
-                                # Brunner-Munzel as fallback
-                                test_res = brunnermunzel(r2_1, r2_2, nan_policy='omit')
-                                pval = test_res.pvalue
-                                # Effect size for Brunner-Munzel
-                                n_total = len(r2_1) + len(r2_2)
-                                effect_size = calculate_rank_biserial(test_res=test_res, n=n_total)
+                            # Run tests and compute effect sizes for two data clusters
+                            pval, effect_size = protected_stats_test(r2_1, r2_2)
 
                             # Store the uncorrected p-value and mirror
                             matrix_r2[row_offset + 6, col_idx] = pval
@@ -986,8 +1041,9 @@ def regression_performance_marginal_stats(  # noqa: C901
         ]
 
         # Add Process_ID column with original string identifiers
-        desc_col = ["Process_label", "n_records", "Mean_R2", "Min_R2", "Median_R2", "Max_R2"] \
-            + p_vs_labels + effect_vs_labels
+        desc_col = (
+            ["Process_label", "n_records", "Mean_R2", "Min_R2", "Median_R2", "Max_R2"] + p_vs_labels + effect_vs_labels
+        )
         step_gstats_r2.insert(0, "Process_ID", desc_col)
 
         # Collect step result
@@ -1087,8 +1143,16 @@ def classification_performance_marginal_stats(  # noqa: C901
     # TODO: Validate multitest_correction
     if multitest_correction is not None:
         multitest_methods = [
-            'bonferroni', 'sidak', 'holm-sidak', 'holm', 'simes-hochberg', 'hommel',
-            'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky',
+            'bonferroni',
+            'sidak',
+            'holm-sidak',
+            'holm',
+            'simes-hochberg',
+            'hommel',
+            'fdr_bh',
+            'fdr_by',
+            'fdr_tsbh',
+            'fdr_tsbky',
         ]
         if multitest_correction.lower() not in multitest_methods:
             raise ValueError(f"multitest_correction must be 'fdr' or 'bonferroni', got: {multitest_correction}")
@@ -1165,39 +1229,9 @@ def classification_performance_marginal_stats(  # noqa: C901
                         if col_idx < row_offset:
                             mac_2, mic_2 = group_macauc[pid2], group_micauc[pid2]
 
-                            # Test macro measure
-                            if len(mac_1) == len(mac_2):
-                                try:
-                                    # Wilcoxon p-value
-                                    res_mac = wilcoxon(mac_1, mac_2, method="auto")
-                                    p_mac = res_mac.pvalue
-                                    n_pairs_mac = len(mac_1)
-                                    eff_mac = calculate_rank_biserial(test_res=res_mac, n=n_pairs_mac)
-                                except ValueError:
-                                    p_mac, eff_mac = 1.0, 0.0
-                            else:
-                                # Brunner-Munzel as fallback
-                                res_mac = brunnermunzel(mac_1, mac_2, nan_policy='omit')
-                                p_mac = res_mac.pvalue
-                                n_total_mac = len(mac_1) + len(mac_2)
-                                eff_mac = calculate_rank_biserial(test_res=res_mac, n=n_total_mac)
-
-                            # Test micro measure
-                            if len(mic_1) == len(mic_2):
-                                try:
-                                    # Wilcoxon p-value
-                                    res_mic = wilcoxon(mic_1, mic_2, method="auto")
-                                    p_mic = res_mic.pvalue
-                                    n_pairs_mic = len(mic_1)
-                                    eff_mic = calculate_rank_biserial(test_res=res_mic, n=n_pairs_mic)
-                                except ValueError:
-                                    p_mic, eff_mic = 1.0, 0.0
-                            else:
-                                # Brunner-Munzel as fallback
-                                res_mic = brunnermunzel(mic_1, mic_2, nan_policy='omit')
-                                p_mic = res_mic.pvalue
-                                n_total_mic = len(mic_1) + len(mic_2)
-                                eff_mic = calculate_rank_biserial(test_res=res_mic, n=n_total_mic)
+                            # Run tests and compute effect sizes for two data clusters
+                            p_mac, eff_mac = protected_stats_test(mac_1, mac_2)
+                            p_mic, eff_mic = protected_stats_test(mic_1, mic_2)
 
                             # Store uncorrected p-values and mirror for macro
                             matrix_macauc[row_offset + 6, col_idx] = p_mac
@@ -1259,31 +1293,39 @@ def classification_performance_marginal_stats(  # noqa: C901
 
         # Row labels
         p_vs_labels = [
-            f"p_vs_{'All' if pid == 'All' else process_id_to_label(pid, proc_id_to_label, ignore_err=(not validate_process))}"
+            f"p_vs_{'All' if pid == 'All' else process_id_to_label(pid, proc_id_to_label, ignore_err=(not validate_process))}"  # noqa: E501
             for pid in all_ids
         ]
         effect_vs_labels = [
-            f"effect_vs_{'All' if pid == 'All' else process_id_to_label(pid, proc_id_to_label, ignore_err=(not validate_process))}"
+            f"effect_vs_{'All' if pid == 'All' else process_id_to_label(pid, proc_id_to_label, ignore_err=(not validate_process))}"  # noqa: E501
             for pid in all_ids
         ]
 
         # Add Process_ID column with original string identifiers
-        desc_mac = [
-            "Process_label",
-            "n_records",
-            "Mean_AUC_macro",
-            "Min_AUC_macro",
-            "Median_AUC_macro",
-            "Max_AUC_macro",
-        ] + p_vs_labels + effect_vs_labels
-        desc_mic = [
-            "Process_label",
-            "n_records",
-            "Mean_AUC_micro",
-            "Min_AUC_micro",
-            "Median_AUC_micro",
-            "Max_AUC_micro",
-        ] + p_vs_labels + effect_vs_labels
+        desc_mac = (
+            [
+                "Process_label",
+                "n_records",
+                "Mean_AUC_macro",
+                "Min_AUC_macro",
+                "Median_AUC_macro",
+                "Max_AUC_macro",
+            ]
+            + p_vs_labels
+            + effect_vs_labels
+        )
+        desc_mic = (
+            [
+                "Process_label",
+                "n_records",
+                "Mean_AUC_micro",
+                "Min_AUC_micro",
+                "Median_AUC_micro",
+                "Max_AUC_micro",
+            ]
+            + p_vs_labels
+            + effect_vs_labels
+        )
 
         step_gstats_macauc.insert(0, "Process_ID", desc_mac)
         step_gstats_micauc.insert(0, "Process_ID", desc_mic)

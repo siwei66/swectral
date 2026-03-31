@@ -1107,15 +1107,17 @@ def invalid_measure(
     axis: Optional[int] = 0,
     *args: object,
     **kwargs: object,
-) -> np.ndarray:
+) -> Union[np.ndarray, float]:
     if axis is None:
-        return np.nan
+        result = np.nan
     elif axis == 0:
-        return np.full(v.shape[1], np.nan, dtype=float)
+        result = np.full(v.shape[1], np.nan, dtype=float)
     elif axis == 1:
-        return np.full(v.shape[0], np.nan, dtype=float)
+        result = np.full(v.shape[0], np.nan, dtype=float)
     else:
         raise ValueError(f"axis must be 0, 1 or None, got: {axis}")
+    assert isinstance(result, np.ndarray)
+    return result
 
 
 # Helper: stats measure opter
@@ -1537,7 +1539,10 @@ class Stats2d:
 
     # Stats function, able to return multiple measures at one time
     @simple_type_validator
-    def summary(self, data_array_2d: Annotated[Any, arraylike_validator(ndim=2)]) -> dict[str, np.ndarray]:
+    def summary(  # noqa: C901
+        self,
+        data_array_2d: Annotated[Any, arraylike_validator(ndim=2)],
+    ) -> dict[str, np.ndarray]:
         """
         Computes the statistical measures in the ``measure`` of this Stats2d instance for a 2D data array.
 
@@ -1579,7 +1584,7 @@ class Stats2d:
         if nsample < 5:
             # raise ValueError(f"Sample size must be at least 5, got: {nsample}")
             warnings.warn(
-                f"Sample size {nsample} could be too small for some statistical measures.",
+                f"Sample size {nsample} is too small for some statistical measures.",
                 UserWarning,
                 stacklevel=2,
             )

@@ -2269,10 +2269,8 @@ class TestStats2d:
         """Test Stats2d.summary with insufficient samples"""
         arr = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [10.0, 11.0, 12.0]])  # Only 4 samples
 
-        # with pytest.raises(ValueError, match="Sample size must be at least 5"):
-        #     Stats2d().summary(arr)
-        # TODO: changed
-        
+        with pytest.warns(UserWarning, match="Sample size"):
+            Stats2d().summary(arr)
 
     @staticmethod
     def test_callable_measure() -> None:
