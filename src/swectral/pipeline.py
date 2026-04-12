@@ -2518,8 +2518,7 @@ class SpecPipe:
             input_data_level = _dl_val(step[0][0])[0]
             output_data_level = _dl_val(step[0][1])[0]
             if not (
-                (input_data_level == dl_in_p and output_data_level >= dl_out_p)
-                or (_dl_val(input_data_level)[0] <= 4)
+                (input_data_level == dl_in_p and output_data_level >= dl_out_p) or (_dl_val(input_data_level)[0] <= 4)
             ):
                 dl_in_p = input_data_level
                 dl_out_p = output_data_level
