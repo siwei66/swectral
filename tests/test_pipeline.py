@@ -168,19 +168,12 @@ def create_test_spec_pipe(
     pipe.add_process(2, 2, 1, arr_simple_half)
     pipe.add_process(5, 6, 0, roispec)
     pipe.add_process(6, 7, 0, Stats2d().mean)
-    # TODO: new
     pipe.add_process(7, 8, 0, identity_assembly, process_label="exp_assem1")
     pipe.add_process(8, 8, 1, identity_assembly, process_label="exp_assem2")
     if is_regression:
-        # TODO: changed
-        # pipe.add_process(7, 8, 0, RandomForestRegressor(n_estimators=6), validation_method=validation_method)
-        # pipe.add_process(7, 8, 0, KNeighborsRegressor(n_neighbors=3), validation_method=validation_method)
         pipe.add_process(8, 9, 0, RandomForestRegressor(n_estimators=6), validation_method=validation_method)
         pipe.add_process(8, 9, 0, KNeighborsRegressor(n_neighbors=3), validation_method=validation_method)
     else:
-        # TODO: changed
-        # pipe.add_process(7, 8, 0, RandomForestClassifier(n_estimators=6), validation_method=validation_method)
-        # pipe.add_process(7, 8, 0, KNeighborsClassifier(n_neighbors=3), validation_method=validation_method)
         pipe.add_process(8, 9, 0, RandomForestClassifier(n_estimators=6), validation_method=validation_method)
         pipe.add_process(8, 9, 0, KNeighborsClassifier(n_neighbors=3), validation_method=validation_method)
 
@@ -393,7 +386,7 @@ class TestSpecPipe(unittest.TestCase):
             assert len(pipe.process) == 7
             n_added = 7
 
-        # TODO: Method of assembly data levels
+        # Method of assembly data levels
         pipe.add_process(7, 8, 0, identity_assembly, process_label='identity_assembly1')
         assert len(pipe.process) == n_added + 1
         pipe.add_process(8, 8, 0, identity_assembly, process_label='identity_assembly2')
@@ -596,23 +589,18 @@ class TestSpecPipe(unittest.TestCase):
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(5, 7, 0, roi_mean)
         assert len(pipe.ls_process(return_result=True, print_result=False)) == 2
-        # TODO: assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 0
         assert len(pipe.ls_process(output_data_level=9, return_result=True, print_result=False)) == 0
         assert len(pipe.process_steps) == 2
         assert len(pipe.process_chains) == 1
 
         # Add models
-        # TODO: pipe.add_process(7, 8, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.ls_process(return_result=True, print_result=False)) == 3
-        # TODO: assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 1
         assert len(pipe.ls_process(output_data_level=9, return_result=True, print_result=False)) == 1
         assert len(pipe.process_steps) == 3
         assert len(pipe.process_chains) == 1
-        # TODO: pipe.add_process(7, 8, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.ls_process(return_result=True, print_result=False)) == 4
-        # TODO: assert len(pipe.ls_process(output_data_level=8, return_result=True, print_result=False)) == 2
         assert len(pipe.ls_process(output_data_level=9, return_result=True, print_result=False)) == 2
         assert len(pipe.process_steps) == 3
         assert len(pipe.process_chains) == 2
@@ -637,10 +625,8 @@ class TestSpecPipe(unittest.TestCase):
         assert len(pipe.ls_model(return_result=True, print_result=False)) == 0
 
         # Add and list models
-        # TODO: pipe.add_process(7, 8, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.ls_model(return_result=True, print_result=False)) == 1
-        # TODO: pipe.add_process(7, 8, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.ls_model(return_result=True, print_result=False)) == 2
         assert len(pipe.ls_model(model_id=pipe.process_chains[0][-1], return_result=True, print_result=False)) == 1
@@ -665,10 +651,6 @@ class TestSpecPipe(unittest.TestCase):
 
         # Add models
         def add_models() -> None:
-            # TODO: changed
-            # pipe.add_process(7, 8, 0, regressor_1)
-            # pipe.add_process(7, 8, 0, regressor_1, process_label="test_regressor")
-            # pipe.add_process(7, 8, 0, regressor_2)
             pipe.add_process(7, 9, 0, regressor_1)
             pipe.add_process(7, 9, 0, regressor_1, process_label="test_regressor")
             pipe.add_process(7, 9, 0, regressor_2)
@@ -735,9 +717,6 @@ class TestSpecPipe(unittest.TestCase):
         pipe1.add_process(2, 2, 1, arr_simple_half)
         pipe1.add_process(5, 6, 0, roispec)
         pipe1.add_process(6, 7, 0, Stats2d().mean)
-        # TODO: changed
-        # pipe1.add_process(7, 8, 0, RandomForestRegressor(n_estimators=6), validation_method="2-fold")
-        # pipe1.add_process(7, 8, 0, KNeighborsRegressor(n_neighbors=3), validation_method="2-fold")
         pipe1.add_process(7, 9, 0, RandomForestRegressor(n_estimators=6), validation_method="2-fold")
         pipe1.add_process(7, 9, 0, KNeighborsRegressor(n_neighbors=3), validation_method="2-fold")
 
@@ -750,7 +729,6 @@ class TestSpecPipe(unittest.TestCase):
         pipe2.add_process(6, 7, 0, Stats2d().mean)
         pipe2.add_process(
             7,
-            # TODO: 8,
             9,
             0,
             [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)],
@@ -768,7 +746,6 @@ class TestSpecPipe(unittest.TestCase):
                 ((2, 2), [arr_ori, arr_simple_half]),
                 ((5, 6), roispec),
                 ((6, 7), Stats2d().mean),
-                # TODO: ((7, 8), [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)]),
                 ((7, 9), [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)]),
             ]
         )
@@ -785,7 +762,6 @@ class TestSpecPipe(unittest.TestCase):
                 ((5, 6), roispec),
                 ((6, 7), Stats2d().mean),
                 (
-                    # TODO: (7, 8),
                     (7, 9),
                     [RandomForestRegressor(n_estimators=6), KNeighborsRegressor(n_neighbors=3)],
                     {'validation_method': 'loo'},
@@ -857,9 +833,6 @@ class TestSpecPipe(unittest.TestCase):
         # Add process
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(5, 7, 0, roi_mean)
-        # TODO: changed
-        # pipe.add_process(7, 8, 0, regressor)
-        # pipe.add_process(7, 8, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
 
@@ -906,9 +879,6 @@ class TestSpecPipe(unittest.TestCase):
         # Add process
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(5, 7, 0, roi_mean)
-        # TODO: changed
-        # pipe.add_process(7, 8, 0, regressor)
-        # pipe.add_process(7, 8, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
 
@@ -935,14 +905,12 @@ class TestSpecPipe(unittest.TestCase):
         # Add process
         pipe.add_process(0, 0, 0, original_img)
         pipe.add_process(5, 7, 0, roi_mean)
-        # TODO: pipe.add_process(7, 8, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
 
         assert len(pipe.process_chains) == 1
 
         pipe.save_pipe_config()
 
-        # TODO: pipe.add_process(7, 8, 0, regressor)
         pipe.add_process(7, 9, 0, regressor)
         assert len(pipe.process_chains) == 2
 
@@ -1361,7 +1329,6 @@ class TestSpecPipe(unittest.TestCase):
         rdir = f"{test_dir}Modeling/Model_evaluation_reports/"
         step_perf_sum_path = f"{rdir}Performance_summary.csv"
         assert os.path.exists(step_perf_sum_path)
-        # TODO: new summary value validation
         # Validate summary values
         df_summary = pd.read_csv(step_perf_sum_path)
         assert not df_summary.isnull().any().any(), "Performance_summary.csv contains NaN"
@@ -1476,7 +1443,6 @@ class TestSpecPipe(unittest.TestCase):
         step_mic_sum_path = f"{rdir}Micro_avg_performance_summary.csv"
         assert os.path.exists(step_mac_sum_path)
         assert os.path.exists(step_mic_sum_path)
-        # TODO: new summary value validation
         # Validate summary values
         # Macro
         df_summary = pd.read_csv(step_mac_sum_path)

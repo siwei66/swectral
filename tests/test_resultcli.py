@@ -51,15 +51,9 @@ def create_test_spec_pipe(dir_path: str, sample_n: int = 10, n_bands: int = 8, i
     pipe.add_process(6, 7, 0, Stats2d().median)
     # Step 2 - modeling
     if is_regression:
-        # TODO: changed
-        # pipe.add_process(7, 8, 0, RandomForestRegressor(n_estimators=6))
-        # pipe.add_process(7, 8, 0, KNeighborsRegressor(n_neighbors=3))
         pipe.add_process(7, 9, 0, RandomForestRegressor(n_estimators=6))
         pipe.add_process(7, 9, 0, KNeighborsRegressor(n_neighbors=3))
     else:
-        # TODO: changed
-        # pipe.add_process(7, 8, 0, RandomForestClassifier(n_estimators=6))
-        # pipe.add_process(7, 8, 0, KNeighborsClassifier(n_neighbors=3))
         pipe.add_process(7, 9, 0, RandomForestClassifier(n_estimators=6))
         pipe.add_process(7, 9, 0, KNeighborsClassifier(n_neighbors=3))
     return pipe

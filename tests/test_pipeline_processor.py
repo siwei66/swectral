@@ -28,7 +28,6 @@ def test_dl_val() -> None:
     assert _dl_val(5) == (5, "image_roi")
     assert _dl_val(6) == (6, "roi_specs")
     assert _dl_val(7) == (7, "spec1d")
-    # TODO: assert _dl_val(8) == (8, "model")
     assert _dl_val(9) == (9, "model")
     assert _dl_val("image") == (0, "image")
     assert _dl_val("pixel_spec") == (1, "pixel_spec")
@@ -38,7 +37,6 @@ def test_dl_val() -> None:
     assert _dl_val("image_roi") == (5, "image_roi")
     assert _dl_val("roi_specs") == (6, "roi_specs")
     assert _dl_val("spec1d") == (7, "spec1d")
-    # TODO: assert _dl_val("model") == (8, "model")
     assert _dl_val("model") == (9, "model")
 
 
