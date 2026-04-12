@@ -1029,7 +1029,6 @@ def _get_base_size(obj: Any) -> int:
     return result
 
 
-# TODO: new
 # Disk space check and wait disk space
 @simple_type_validator
 def _wait_for_free_space(
@@ -1075,7 +1074,6 @@ def _wait_for_free_space(
 # %% Dump and load python obj to dill file
 
 
-# TODO: changed
 # New dump vars with disk space validation and backup functionality
 @simple_type_validator
 def dump_dill(
@@ -1268,7 +1266,6 @@ def _safe_disk_wait(
 # %% Write to large csv
 
 
-# TODO: changed
 # Write pandas dataframe to csv with auto compression
 @simple_type_validator
 def df_to_csv(  # type: ignore[no-untyped-def]  # noqa: C901
@@ -1372,7 +1369,6 @@ def df_to_csv(  # type: ignore[no-untyped-def]  # noqa: C901
         return None
 
 
-# TODO: changed
 # Read compressed csv
 @simple_type_validator
 def df_from_csv(csv_path: str, **kwargs) -> pd.DataFrame:  # type: ignore[no-untyped-def]  # noqa: C901

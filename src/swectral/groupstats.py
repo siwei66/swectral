@@ -85,7 +85,6 @@ def chain_sample_group_stats(  # noqa: C901
     write_dir = output_directory
 
     # Read preprocessed data
-    # TODO: df_preprocessed = pd.read_csv(unc_path(sample_data_path), header=0).iloc[:, 1:]
     df_preprocessed = df_from_csv(csv_path=unc_path(sample_data_path), header=0).iloc[:, 1:]
     # Validate columns
     if len(df_preprocessed.columns) > 7:
@@ -105,7 +104,6 @@ def chain_sample_group_stats(  # noqa: C901
         raise ValueError(f"Invalid sample data columns: {df_preprocessed.columns}")
 
     # Read sample groups
-    # TODO: df_sample_targets = pd.read_csv(unc_path(sample_target_path))
     df_sample_targets = df_from_csv(csv_path=unc_path(sample_target_path))
     # Validate columns
     if list(df_sample_targets.columns) == [
@@ -202,11 +200,6 @@ def chain_sample_group_stats(  # noqa: C901
 
         # Save results
         # Save target stats
-        # TODO: changed
-        # df_ystats.to_csv(
-        #     unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_y_stats.csv"),
-        #     index=False,
-        # )
         df_to_csv(
             dataframe=df_ystats,
             csv_path=unc_path(
@@ -221,10 +214,6 @@ def chain_sample_group_stats(  # noqa: C901
         # Dump y stats dill (swectral private)
         dill_result_path = write_dir + ".__swectral_dill_data/.__swectral_result_summary_sample_targets_stats.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-
-        # TODO: changed
-        # with open(unc_path(dill_result_path), "wb") as f:
-        #     dill.dump(df_ystats, f)
         dump_dill(
             df_ystats,
             target_file_path=unc_path(dill_result_path),
@@ -237,11 +226,6 @@ def chain_sample_group_stats(  # noqa: C901
         # Save X stats
         for m in list(gstats.keys()):
             dfm = df_xstats_dict[m]
-            # TODO: changed
-            # dfm.to_csv(
-            #     unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_X_{m}.csv"),
-            #     index=False,
-            # )
             df_to_csv(
                 dataframe=dfm,
                 csv_path=unc_path(
@@ -298,11 +282,6 @@ def chain_sample_group_stats(  # noqa: C901
 
         # Save results
         # Save target stats
-        # TODO: changed
-        # df_ystats.to_csv(
-        #     unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_y_stats.csv"),
-        #     index=False,
-        # )
         df_to_csv(
             dataframe=df_ystats,
             csv_path=unc_path(
@@ -317,9 +296,6 @@ def chain_sample_group_stats(  # noqa: C901
         # Dump y stats dill (swectral private)
         dill_result_path = write_dir + ".__swectral_dill_data/.__swectral_result_summary_sample_targets_stats.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: changed
-        # with open(unc_path(dill_result_path), "wb") as f:
-        #     dill.dump(df_ystats, f)
         dump_dill(
             df_ystats,
             target_file_path=unc_path(dill_result_path),
@@ -333,11 +309,6 @@ def chain_sample_group_stats(  # noqa: C901
         # Save X stats
         for m in list(gstats_x.keys()):
             dfm = df_xstats_dict[m]
-            # TODO: changed
-            # dfm.to_csv(
-            #     unc_path(write_dir + f"PreprocessingChainResult_chain_ind_{preprocessing_chain_index}_X_{m}.csv"),
-            #     index=False,
-            # )
             df_to_csv(
                 dataframe=dfm,
                 csv_path=unc_path(
@@ -507,7 +478,7 @@ def process_label_to_id(process_label: str, proc_label_to_id: dict, ignore_err: 
 # %% Rank_Biserial for effect size for marginal performance comparison
 
 
-# TODO: Compute rank-biserial correlation for effect size from Wilcoxon and Brunner-Munzel tests
+# Compute rank-biserial correlation for effect size from Wilcoxon and Brunner-Munzel tests
 @simple_type_validator
 def calculate_rank_biserial(test_res: object, n: int, is_paired: bool = True) -> float:
     """Compute Rank Biserial from statistical tests."""
@@ -534,7 +505,7 @@ def calculate_rank_biserial(test_res: object, n: int, is_paired: bool = True) ->
     return result
 
 
-# TODO: Run edge-case-protected Wilcoxon and Brunner-Munzel tests and compute effect size
+# Run edge-case-protected Wilcoxon and Brunner-Munzel tests and compute effect size
 def protected_stats_test(v1: list[float], v2: list[float]) -> tuple[float, float]:
     """
     Perform scale-aware Wilcoxon signed-rank test and Brunner-Munzel test for pvalue,
@@ -625,24 +596,12 @@ def performance_metrics_summary(  # noqa: C901
 
     config_dir = (pipeline_config_dir.replace("\\", "/") + "/").replace("//", "/")
     report_dir = (model_evaluation_report_dir.replace("\\", "/") + "/").replace("//", "/")
-    # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
     process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Construct label-ID lookup dictionaries
     proc_id_to_label: dict[str, str]
     proc_label_to_id: dict[str, str]
     proc_id_to_label, proc_label_to_id = process_id_label_lookup_dict(process_config_df)
-
-    # TODO: changed for compressed scenarios
-    # # Chains path
-    # chains_id_path = config_dir + "SpecPipe_exec_chains_in_ID.csv"
-    # chains_label_path = config_dir + "SpecPipe_exec_chains_in_label.csv"
-
-    # # Validate paths
-    # if not os.path.exists(unc_path(chains_id_path)):
-    #     raise ValueError(f"Missing required file in given pipeline_config_dir: {chains_id_path}")
-    # if not os.path.exists(unc_path(chains_label_path)):
-    #     raise ValueError(f"Missing required file in given pipeline_config_dir: {chains_label_path}")
 
     # Allowed compressed CSV file extensions
     ext_compress_allowed: list = [".gz", ".bz2", ".zip", ".xz", ".zst", ""]
@@ -672,9 +631,7 @@ def performance_metrics_summary(  # noqa: C901
         raise ValueError(f"Missing Label file (CSV/compressed) in: {config_dir}")
 
     # Chains
-    # TODO: df_cid = pd.read_csv(unc_path(chains_id_path))
     df_cid = df_from_csv(csv_path=unc_path(chains_id_path))
-    # TODO: df_clab = pd.read_csv(unc_path(chains_label_path))
     df_clab = df_from_csv(csv_path=unc_path(chains_label_path))
 
     # Validate results
@@ -789,9 +746,6 @@ def performance_metrics_summary(  # noqa: C901
         # Dump dill (swectral private)
         dill_result_path = metrics_dir + ".__swectral_dill_data/.__swectral_core_result_Chain_process_info.dill"
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: changed
-        # with open(unc_path(dill_result_path), "wb") as f:
-        #     dill.dump(df_cprocs, f)
         dump_dill(
             df_cprocs,
             target_file_path=unc_path(dill_result_path),
@@ -807,7 +761,6 @@ def performance_metrics_summary(  # noqa: C901
             for entry in os.scandir(unc_path(metrics_dir))
             if f"_performance_{dir_name.split('_Model_')[-1]}.csv" in entry.name
         ][0]
-        # TODO: df_metrics = pd.read_csv(unc_path(f"{report_dir}{dir_name}/{metrics_filename}"))
         df_metrics = df_from_csv(csv_path=unc_path(f"{report_dir}{dir_name}/{metrics_filename}"))
         if "Classification_performance_" in metrics_filename:
             # micro metrics
@@ -912,7 +865,7 @@ def regression_performance_marginal_stats(  # noqa: C901
     df_reg_metrics = metrics_dict["regression_metrics"]
     config_dir = pipeline_config_dir
 
-    # TODO: Validate multitest_correction
+    # Validate multitest_correction
     if multitest_correction is not None:
         multitest_methods = [
             'bonferroni',
@@ -932,7 +885,6 @@ def regression_performance_marginal_stats(  # noqa: C901
             multitest_correction = multitest_correction.lower()
 
     # Load config and create a lookup dictionary
-    # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
     process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Construct label-ID lookup dictionaries
@@ -960,10 +912,10 @@ def regression_performance_marginal_stats(  # noqa: C901
         # Pre-allocate matrix for faster numpy location
         num_stats_rows = 6
         num_test_rows = len(all_ids)
-        # TODO: Doubled num_test_rows for effect size matrix
+        # Doubled num_test_rows for effect size matrix
         matrix_r2 = np.empty((num_stats_rows + num_test_rows * 2, len(all_ids)), dtype=object)
 
-        # TODO: new, corrected wilcoxon
+        # Corrected wilcoxon
         test_pvals = []
         p_value_coordinates = []
         for col_idx, pid1 in enumerate(all_ids):
@@ -990,7 +942,7 @@ def regression_performance_marginal_stats(  # noqa: C901
                     # Identity cases
                     if pid1 == pid2:
                         matrix_r2[row_offset + 6, col_idx] = 1.0
-                        # TODO: Set effect size for identical procs
+                        # Set effect size for identical procs
                         matrix_r2[row_offset + 6 + len(all_ids), col_idx] = 0.0
                     else:
                         # Only run the test for unique pairs
@@ -1051,7 +1003,6 @@ def regression_performance_marginal_stats(  # noqa: C901
 
         # Save step result
         if len(step_process_ids) > 1:
-            # TODO: step_gstats_r2.to_csv(unc_path(report_dir + f"Marginal_R2_stats_{str(step).lower()}.csv"), index=False)  # noqa: E501
             df_to_csv(
                 dataframe=step_gstats_r2,
                 csv_path=unc_path(report_dir + f"Marginal_R2_stats_{str(step).lower()}.csv"),
@@ -1066,9 +1017,6 @@ def regression_performance_marginal_stats(  # noqa: C901
                 + f".__swectral_dill_data/.__swectral_result_summary_Marginal_R2_stats_{str(step).lower()}.dill"
             )
             os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-            # TODO: changed
-            # with open(unc_path(dill_result_path), "wb") as f:
-            #     dill.dump(step_gstats_r2, f)
             dump_dill(
                 step_gstats_r2,
                 target_file_path=unc_path(dill_result_path),
@@ -1080,7 +1028,6 @@ def regression_performance_marginal_stats(  # noqa: C901
             )
 
     # Save summaries
-    # TODO: df_reg_metrics.to_csv(unc_path(report_dir + "Performance_summary.csv"), index=False)
     df_to_csv(
         dataframe=df_reg_metrics,
         csv_path=unc_path(report_dir + "Performance_summary.csv"),
@@ -1090,7 +1037,6 @@ def regression_performance_marginal_stats(  # noqa: C901
         min_sec_random_wait=5.0,
         max_sec_random_wait=5.0,
     )
-    # TODO: new, new columns
     # Add report subdir names for chain report location
     map_preprocessing_files(
         csv_name="Performance_summary.csv",
@@ -1101,9 +1047,6 @@ def regression_performance_marginal_stats(  # noqa: C901
     # Save dill
     dill_result_path = report_dir + ".__swectral_dill_data/.__swectral_result_summary_Performance_summary.dill"
     os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-    # TODO: changed
-    # with open(unc_path(dill_result_path), "wb") as f:
-    #     dill.dump(df_reg_metrics, f)
     dump_dill(
         df_reg_metrics,
         target_file_path=unc_path(dill_result_path),
@@ -1140,7 +1083,7 @@ def classification_performance_marginal_stats(  # noqa: C901
     df_micro_metrics = metrics_dict["micro_metrics"]
     config_dir = pipeline_config_dir
 
-    # TODO: Validate multitest_correction
+    # Validate multitest_correction
     if multitest_correction is not None:
         multitest_methods = [
             'bonferroni',
@@ -1160,7 +1103,6 @@ def classification_performance_marginal_stats(  # noqa: C901
             multitest_correction = multitest_correction.lower()
 
     # Load config and create a lookup dictionary
-    # TODO: process_config_df = pd.read_csv(unc_path(config_dir + "SpecPipe_added_process.csv"))
     process_config_df = df_from_csv(csv_path=unc_path(config_dir + "SpecPipe_added_process.csv"))
 
     # Construct label-ID lookup dictionaries
@@ -1184,13 +1126,13 @@ def classification_performance_marginal_stats(  # noqa: C901
         group_micauc = {'All': list(df_micro_metrics["AUC"])}
         group_micauc.update(grouped_micro)
 
-        # TODO: Pre-allocate matrix for faster numpy location
+        # Pre-allocate matrix for faster numpy location
         num_stats_rows = 6
         num_test_rows = len(all_ids)
         matrix_macauc = np.empty((num_stats_rows + num_test_rows * 2, len(all_ids)), dtype=object)
         matrix_micauc = np.empty((num_stats_rows + num_test_rows * 2, len(all_ids)), dtype=object)
 
-        # TODO: new, corrected wilcoxon
+        # Corrected wilcoxon
         test_pvals_mac = []
         p_value_coords_mac = []
         test_pvals_mic = []
@@ -1335,10 +1277,6 @@ def classification_performance_marginal_stats(  # noqa: C901
 
         if len(step_process_ids) > 1:
             # Macro
-            # TODO: changed
-            # step_gstats_macauc.to_csv(
-            #     unc_path(report_dir + f"Marginal_macro_avg_AUC_stats_{str(step).lower()}.csv"), index=False
-            # )
             df_to_csv(
                 dataframe=step_gstats_macauc,
                 csv_path=unc_path(report_dir + f"Marginal_macro_avg_AUC_stats_{str(step).lower()}.csv"),
@@ -1354,9 +1292,6 @@ def classification_performance_marginal_stats(  # noqa: C901
                 + f".__swectral_result_summary_Marginal_macro_avg_AUC_stats_{str(step).lower()}.dill"
             )
             os.makedirs(os.path.dirname(dill_path), exist_ok=True)
-            # TODO: changed
-            # with open(dill_path, "wb") as f:
-            #     dill.dump(step_gstats_macauc, f)
             dump_dill(
                 step_gstats_macauc,
                 target_file_path=unc_path(dill_path),
@@ -1367,11 +1302,6 @@ def classification_performance_marginal_stats(  # noqa: C901
                 max_sec_random_wait=5.0,
             )
             # Micro
-            # TODO: changed
-            # step_gstats_micauc.to_csv(
-            #     unc_path(report_dir + f"Marginal_micro_avg_AUC_stats_{str(step).lower()}.csv"),
-            #     index=False,
-            # )
             df_to_csv(
                 dataframe=step_gstats_micauc,
                 csv_path=unc_path(report_dir + f"Marginal_micro_avg_AUC_stats_{str(step).lower()}.csv"),
@@ -1386,9 +1316,6 @@ def classification_performance_marginal_stats(  # noqa: C901
                 + ".__swectral_dill_data/"
                 + f".__swectral_result_summary_Marginal_micro_avg_AUC_stats_{str(step).lower()}.dill"
             )
-            # TODO: changed
-            # with open(dill_path, "wb") as f:
-            #     dill.dump(step_gstats_micauc, f)
             dump_dill(
                 step_gstats_micauc,
                 target_file_path=unc_path(dill_path),
@@ -1402,7 +1329,6 @@ def classification_performance_marginal_stats(  # noqa: C901
     # Save summaries
     marginal_performance_stats.update({"macro_summary": df_macro_metrics, "micro_summary": df_micro_metrics})
     for df_sum, prefix in [(df_macro_metrics, "Macro"), (df_micro_metrics, "Micro")]:
-        # TODO: df_sum.to_csv(unc_path(report_dir + f"{prefix}_avg_performance_summary.csv"), index=False)
         df_to_csv(
             dataframe=df_sum,
             csv_path=unc_path(report_dir + f"{prefix}_avg_performance_summary.csv"),
@@ -1412,7 +1338,6 @@ def classification_performance_marginal_stats(  # noqa: C901
             min_sec_random_wait=5.0,
             max_sec_random_wait=5.0,
         )
-        # TODO: new, new columns
         # Add report subdir names for chain report location
         map_preprocessing_files(
             csv_name=f"{prefix}_avg_performance_summary.csv",
@@ -1425,9 +1350,6 @@ def classification_performance_marginal_stats(  # noqa: C901
             report_dir + f".__swectral_dill_data/.__swectral_result_summary_{prefix}_avg_performance_summary.dill"
         )
         os.makedirs(os.path.dirname(dill_path), exist_ok=True)
-        # TODO: changed
-        # with open(dill_path, "wb") as f:
-        #     dill.dump(df_sum, f)
         dump_dill(
             df_sum,
             target_file_path=unc_path(dill_path),
@@ -1534,8 +1456,6 @@ def performance_marginal_stats(
 
 
 # %% Supplementary: column for result searching
-
-# TODO: add new columns of report subdir names for conveniently chain report location
 
 
 def get_step_index(column_name: str) -> int:

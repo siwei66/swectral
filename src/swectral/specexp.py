@@ -852,9 +852,6 @@ class SpecExp:
             if not os.path.isdir(unc_path(report_dir)):
                 os.makedirs(unc_path(report_dir))
             # Save updating reports
-            # TODO: changed
-            # df_all.to_csv(unc_path(report_dir + "All_loaded_images_" + cts + ".csv"), index=False)
-            # df_load_report.to_csv(unc_path(report_dir + "Loaded_images_" + cts + ".csv"), index=False)
             df_to_csv(
                 dataframe=df_all,
                 csv_path=unc_path(report_dir + "All_loaded_images_" + cts + ".csv"),
@@ -1822,9 +1819,6 @@ class SpecExp:
             # Report directory
             if self.log_loading:
                 # Save updating reports
-                # TODO: changed
-                # df_all.to_csv(unc_path(report_dir + "All_loaded_ROIs_" + cts + ".csv"), index=False)
-                # df_load_report.to_csv(unc_path(report_dir + "Loaded_ROIs_" + cts + ".csv"), index=False)
                 df_to_csv(
                     dataframe=df_all,
                     csv_path=unc_path(report_dir + "All_loaded_ROIs_" + cts + ".csv"),
@@ -1852,7 +1846,6 @@ class SpecExp:
         # Save err report
         if len(fail_err_list) > 0:
             df_err = pd.DataFrame(fail_err_list, columns=["Item", "Path", "Error_line", "Error_message"])
-            # TODO: df_err.to_csv(unc_path(report_dir + "_failed_ROI_loading_" + cts + ".csv"), index=False)
             df_to_csv(
                 dataframe=df_err,
                 csv_path=unc_path(report_dir + "_failed_ROI_loading_" + cts + ".csv"),
@@ -2386,7 +2379,7 @@ class SpecExp:
                 # Validate integrity of vertex coordinate list of every polygon
                 if len(coordlist) < 4:
                     raise ValueError("number of vertex coordinate pairs should be at least 4 for a polygon")
-                # TODO: Convert coordinate numeric types to float
+                # Convert coordinate numeric types to float
                 coordlist1 = [(_float(pair[0]), _float(pair[1])) for pair in coordlist]
                 # Force side vector integrity - last coordinates return to start to form a closed shape
                 if coordlist1[-1] != coordlist1[0]:
@@ -2411,14 +2404,6 @@ class SpecExp:
             roi_type,
             vertex_coordinate_pair_lists1,
         )
-        # TODO: changed
-        # existed_roi_ids = [roit[0] for roit in self._rois_from_coords]
-        # if roi_id not in existed_roi_ids:
-        #     self._rois_from_coords.append(new_roic_item)
-        # else:
-        #     for i in range(len(self._rois_from_coords)):
-        #         if self._rois_from_coords[i][0] == roi_id:
-        #             self._rois_from_coords[i] = new_roic_item
         if self.__roi_id_to_index is None:
             self.__roi_id_to_index = {roit[0]: i for i, roit in enumerate(self._rois_from_coords)}
         if roi_id not in self.__roi_id_to_index:
@@ -3522,7 +3507,7 @@ class SpecExp:
         # Update sample labels & targets
         self._update_sample_labels_targets()
 
-    # TODO: ROI subset augmentation
+    # ROI subset augmentation
     # rois_sample: [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs]
     # sample_targets: [0 fixed sample id, 1 user assinged labels, 2 target values, 3 sample belonging group, 4 validation group, 5 test mask, 6 train mask]  # noqa: E501
     @simple_type_validator
@@ -3975,7 +3960,6 @@ class SpecExp:
 
         # Write to csv
         # Write current
-        # TODO: df_sspecs_out.to_csv(unc_path(wpath + f"Standalone_spectra_{self._create_time}.csv"), index=False)
         df_to_csv(
             dataframe=df_sspecs_out,
             csv_path=unc_path(wpath + f"Standalone_spectra_{self._create_time}.csv"),
@@ -3990,10 +3974,6 @@ class SpecExp:
         # Current time for saving backups
         cts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         if save_backup:
-            # TODO: changed
-            # df_sspecs_out.to_csv(
-            #     unc_path(wpath + f"Standalone_spectra_{self._create_time}_backup_{cts}.csv"), index=False
-            # )
             df_to_csv(
                 dataframe=df_sspecs_out,
                 csv_path=unc_path(wpath + f"Standalone_spectra_{self._create_time}_backup_{cts}.csv"),
@@ -4059,7 +4039,6 @@ class SpecExp:
 
         # Validate structure
         try:
-            # TODO: df_sspecs = pd.read_csv(unc_path(dpath))
             df_sspecs = df_from_csv(csv_path=unc_path(dpath))
         except Exception as e:
             raise ValueError("\nUnable to read the provided file: \ndpath\n\n", e) from e
@@ -4521,7 +4500,6 @@ class SpecExp:
         df_lb = df_lb.astype("object")
 
         # Save to file
-        # TODO: df_lb.to_csv(unc_path(save_path), index=False)
         df_to_csv(
             dataframe=df_lb,
             csv_path=unc_path(save_path),
@@ -4689,7 +4667,6 @@ class SpecExp:
             raise ValueError(f"File format is not '.csv': {read_path}")
 
         # Load dataframe - table format validated in self.sample_labels_from_df
-        # TODO: df_label = pd.read_csv(unc_path(read_path))
         df_label = df_from_csv(csv_path=unc_path(read_path))
         df_label = df_label.astype("object")
 
@@ -4984,10 +4961,8 @@ class SpecExp:
 
         # Read df
         if include_header:
-            # TODO: dft = pd.read_csv(unc_path(path), dtype=dtp)
             dft = df_from_csv(csv_path=unc_path(path), dtype=dtp)
         else:
-            # TODO: dft = pd.read_csv(unc_path(path), dtype=dtp, header=None)
             dft = df_from_csv(csv_path=unc_path(path), dtype=dtp, header=None)
         dft.fillna("-", inplace=True)
         str_cols = list(dft.columns[:2]) + list(dft.columns[3:])
@@ -5093,9 +5068,6 @@ class SpecExp:
 
         # Dump data
         dump_path0 = dump_dir + f"SpecExp_data_configuration_{self.create_time}.dill"
-        # TODO: changed
-        # with open(unc_path(dump_path0), 'wb') as f:
-        #     dill.dump(self, f)
         dump_dill(
             self,
             target_file_path=unc_path(dump_path0),
@@ -5122,9 +5094,6 @@ class SpecExp:
                         "copy file creation rate limited to 100 per second."
                     )
             # Dump
-            # TODO: changed
-            # with open(unc_path(dump_path1), 'wb') as f:
-            #     dill.dump(self, f)
             dump_dill(
                 self,
                 target_file_path=unc_path(dump_path1),
@@ -5190,9 +5159,7 @@ class SpecExp:
             dump_path0 = config_file_path
 
         # Load to instance
-        # TODO: new
         loaded_instance = load_dill(unc_path(dump_path0))
-        # self.__dict__.update(loaded_instance.__dict__)
         for key, value in loaded_instance.__dict__.items():
             object.__setattr__(self, key, value)
 

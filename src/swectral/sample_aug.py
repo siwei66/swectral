@@ -101,14 +101,7 @@ def resample_roi(  # noqa: C901
     x_coords = np.arange(min_x, stop_x, resolution)
     y_coords = np.arange(min_y, stop_y, resolution)
 
-    # TODO: changed
-    # candidate_squares = []
-    # for x in x_coords:
-    #     for y in y_coords:
-    #         square = box(x, y, x + resolution, y + resolution)
-    #         if prepared_roi.contains(square):
-    #             candidate_squares.append(square)
-    # TODO: vectorized computation instead
+    # Vectorized computation
     xv, yv = np.meshgrid(x_coords, y_coords)
     potential_origins = np.stack([xv.ravel(), yv.ravel()], axis=-1)
     candidate_squares = []

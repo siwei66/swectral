@@ -421,21 +421,10 @@ def _preprocessing_sample(  # noqa: C901
         # Status vector: Check previous steps,
         # once identical or previous process completed, avoid computing repeatly but use the previous result.
         # [[Step1:[preceding processes 1],[preceding processes 2],...],[Step2:...],...]
-
-        # TODO: removed
-        # model_ids = [pit[0] for pit in process if pit[3] == "model"]
-        # if len(model_ids) > 0:
-        #     n_non_preprocess_step = 1
-        # else:
-        #     n_non_preprocess_step = 0
-        # TODO: new
         model_ids = [pit[0] for pit in process if pit[3] == "model"]
         assembly_ids = [pit[0] for pit in process if pit[3] == "assembly"]
 
         # Number of preprocessing steps
-        # TODO: removed
-        # preprocess_chain_length = len(chains[0]) - n_non_preprocess_step
-        # TODO: new
         n_non_preprocess_step = len(
             [proc_id for proc_id in chains[0] if (proc_id in assembly_ids) or (proc_id in model_ids)]
         )
@@ -512,7 +501,6 @@ def _preprocessing_sample(  # noqa: C901
             file_name = f"PreprocessingResult_sample_{sample_data_label}"
         if dump_result:
             chain_result_path = sdir + f"{file_name}.dill"
-            # TODO: changed
             dump_dill(
                 status_results_out,
                 target_file_path=unc_path(chain_result_path),
@@ -756,10 +744,8 @@ def _dump_disk_backed_data(
         np.save(data_path_ext, num_result)
     # Else to dill
     except Exception:
-        # TODO: data_path_ext = unc_path(data_path + ".dill")
         loader_type = "dill"
         # Dill dump
-        # TODO: dump_dill(data_path_ext, {"data": num_result}, backup=False)
         dump_dill(
             {"data": num_result},
             target_file_path=unc_path(data_path_ext),
@@ -974,13 +960,11 @@ def _wait_for_completion(
     max_wait_time = max(max_wait_time, 1)
     lock = preprocess_status['lock']
     completion_status = preprocess_status['completion_status']
-    # TODO: new
     waiting_for_disk_space = preprocess_status['waiting_for_disk_space']
     while True:
         with lock:
             if output_image_path in completion_status:
                 break
-            # TODO: new
             if output_image_path in waiting_for_disk_space:
                 start_time = time.time()
         if time.time() - start_time > max_wait_time:
@@ -1041,7 +1025,7 @@ def _image_processor(
 
 
 # Basic assembly
-# TODO: Step results to modeling-ready sample_list data
+# Step results to modeling-ready sample_list data
 @simple_type_validator
 def _sample_list_constructor(  # noqa: C901
     result_directory: str,
@@ -1070,15 +1054,6 @@ def _sample_list_constructor(  # noqa: C901
             raise ValueError(f"\nPreprocessing step result file path not found : \n{sdp}\n")
 
     ## Chain results to sample_list data
-    # Get preprocess chains of all preprocessing steps
-
-    # TODO: removed
-    # pchains = []
-    # for pchain in process_chains:
-    #     if pchain[:-1] not in pchains:
-    #         pchains.append(pchain[:-1])
-
-    # TODO: new
     # Get preprocess chains of all preprocessing steps
     model_ids = [pit[0] for pit in specpipe_process if pit[3] == "model"]
     assembly_ids = [pit[0] for pit in specpipe_process if pit[3] == "assembly"]
@@ -1153,7 +1128,6 @@ def _sample_list_constructor(  # noqa: C901
         # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
         # Typing: list[tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any,arraylike_validator(ndim=1)]]]  # noqa: E501
         res_path_dill = preprocess_result_dir + chain_name1 + ".dill"
-        # TODO: changed
         dump_dill(
             {"chain_ind": str(pci), "chain_procs": pchain, "chain_res": pre_results},
             target_file_path=unc_path(res_path_dill),
@@ -1179,11 +1153,6 @@ def _sample_list_constructor(  # noqa: C901
                     (pres[0], str(pres[1]), str(pres[2]), pres[3], pres[4], str(pres[5]), pres[6]) + pres_data_tuple
                 )
             arr_chain_res = np.array(chain_res_table)
-
-            # TODO: changed
-            # coln_chain_res = ["Sample_ID", "Label", "Validation_group", "Test", "Train", "X_shape", "y"] + [
-            #     f"x{i}" for i in range(arr_chain_res.shape[1] - 7)
-            #     ]
             coln_chain_res = ["Sample_ID", "Label", "Validation_group", "Test", "Train", "X_shape", "y"] + [
                 f"x{i}" for i in range(arr_chain_res.shape[1] - 7)
             ]
@@ -1204,7 +1173,6 @@ def _sample_list_constructor(  # noqa: C901
             df_chain_res.columns = ["Preprocessing_chain"] + coln_chain_res
             # Save table to CSV
             res_path_csv = preprocess_result_dir + chain_name1 + ".csv"
-            # TODO: df_chain_res.to_csv(unc_path(res_path_csv), index=False)
             df_to_csv(
                 dataframe=df_chain_res,
                 csv_path=unc_path(res_path_csv),
@@ -1219,8 +1187,6 @@ def _sample_list_constructor(  # noqa: C901
     finished_paths_path_dir = result_directory + "/Assembly/.__swectral_dill_data/"
     os.makedirs(unc_path(finished_paths_path_dir), exist_ok=True)
     path_file_path = finished_paths_path_dir + ".__sample_list_paths_finished.dill"
-    # TODO: dump_dill(unc_path(path_file_path), {"finished_paths": finished_paths}, backup=backup)
-    # TODO: changed
     dump_dill(
         {"finished_paths": finished_paths},
         target_file_path=unc_path(path_file_path),
@@ -1235,8 +1201,8 @@ def _sample_list_constructor(  # noqa: C901
     print("")
 
 
-# TODO: Additional assembly methods
-# TODO: Sample assembly of all samples of a single preprocessing chain
+# Additional assembly methods
+# Sample assembly of all samples of a single preprocessing chain
 @simple_type_validator
 def _single_preprocess_assembly(
     dpath: str,
@@ -1311,7 +1277,7 @@ def _single_preprocess_assembly(
         raise ValueError(f"Failed in the assembly of '{dpath}' sample data") from e
 
 
-# TODO: Apply a single sample assembly step
+# Apply a single sample assembly step
 # Process items: [0 Process_ID, 1 Process_label, 2 Input_data_level, 3 Output_data_level, 4 Application_sequence, 5 Method_callable, 6 _Full_app_seq, 7 _Alternative_number]  # noqa: E501
 @simple_type_validator
 def _apply_step_assembly(
@@ -1370,12 +1336,6 @@ def _apply_step_assembly(
         else:
             output_path = assem_interm_path + output_filename
         # Dump processed sample_list
-        # dump_dill(
-        #     unc_path(output_path),
-        #     {"chain_ind": chain_ind, "chain_procs": chain_procs, "chain_res": chain_res},
-        #     backup=backup,
-        # )
-        # TODO: changed
         dump_dill(
             {"chain_ind": chain_ind, "chain_procs": chain_procs, "chain_res": chain_res},
             target_file_path=unc_path(output_path),
@@ -1409,7 +1369,6 @@ def _apply_step_assembly(
             else:
                 output_path = assem_interm_path + output_filename
             # Dump processed sample_list
-            # TODO: changed
             dump_dill(
                 {"chain_ind": chain_ind, "chain_procs": chain_procs, "chain_res": chain_res},
                 target_file_path=unc_path(output_path),
@@ -1716,7 +1675,6 @@ def _model_evaluator(  # noqa: C901
                     UserWarning,
                     stacklevel=3,
                 )
-            # TODO: dump_dill({"modeling_progress_log": modeling_progress_log}, log_path, backup=False)
             dump_dill(
                 {"modeling_progress_log": modeling_progress_log},
                 target_file_path=unc_path(log_path),
@@ -1727,7 +1685,6 @@ def _model_evaluator(  # noqa: C901
                 max_sec_random_wait=5.0,
             )
         else:
-            # TODO: dump_dill({"modeling_progress_log": [preprocess_chain]}, log_path, backup=False)
             dump_dill(
                 {"modeling_progress_log": [preprocess_chain]},
                 target_file_path=unc_path(log_path),

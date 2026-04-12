@@ -36,7 +36,6 @@ def croproi(
     raster_path: str,
     roi_coordinates: list[list[tuple[Union[int, float], Union[int, float]]]],
     output_path: str,
-    # TODO: new
     *,
     _space_wait_timeout: int = 6,
     _reserve_free_pct: float = 5.0,
@@ -95,7 +94,6 @@ def croproi(
         # Validate available disk space
         raster_meta = out_meta.copy()
         raster_meta["__specpipe_raster_meta_for_size_validation"] = True
-        # TODO: new
         _wait_for_free_space(
             obj=raster_meta,
             path=unc_path(output_path),
@@ -450,7 +448,6 @@ def pixel_spec_apply(  # noqa: C901
     *,
     progress: bool = True,
     override: bool = True,
-    # TODO: new
     _space_wait_timeout: int = 6,
     _reserve_free_pct: float = 5.0,
     _preprocess_status: Optional[dict[str, Any]] = None,
@@ -502,7 +499,6 @@ def pixel_spec_apply(  # noqa: C901
         # Validate available disk space
         raster_meta = meta.copy()
         raster_meta["__specpipe_raster_meta_for_size_validation"] = True
-        # TODO: new
         _safe_disk_wait(
             obj=raster_meta,
             path=unc_path(output_path),
@@ -556,7 +552,6 @@ def pixel_array_apply(  # noqa: C901
     *,
     progress: bool = True,
     override: bool = True,
-    # TODO: new
     _space_wait_timeout: int = 6,
     _reserve_free_pct: float = 5.0,
     _preprocess_status: Optional[dict[str, Any]] = None,
@@ -611,7 +606,6 @@ def pixel_array_apply(  # noqa: C901
         # Validate available disk space
         raster_meta = meta.copy()
         raster_meta["__specpipe_raster_meta_for_size_validation"] = True
-        # TODO: new
         _safe_disk_wait(
             obj=raster_meta,
             path=unc_path(output_path),
@@ -667,7 +661,6 @@ def pixel_tensor_apply(  # noqa: C901
     *,
     progress: bool = True,
     override: bool = True,
-    # TODO: new
     _space_wait_timeout: int = 6,
     _reserve_free_pct: float = 5.0,
     _preprocess_status: Optional[dict[str, Any]] = None,
@@ -742,7 +735,6 @@ def pixel_tensor_apply(  # noqa: C901
         # Validate available disk space
         raster_meta = meta.copy()
         raster_meta["__specpipe_raster_meta_for_size_validation"] = True
-        # TODO: new
         _safe_disk_wait(
             obj=raster_meta,
             path=unc_path(output_path),
@@ -820,7 +812,6 @@ def pixel_tensor_hyper_apply(  # noqa: C901
     *,
     progress: bool = True,
     override: bool = True,
-    # TODO: new
     _space_wait_timeout: int = 6,
     _reserve_free_pct: float = 5.0,
     _preprocess_status: Optional[dict[str, Any]] = None,
@@ -899,7 +890,6 @@ def pixel_tensor_hyper_apply(  # noqa: C901
         # Validate available disk space
         raster_meta = meta.copy()
         raster_meta["__specpipe_raster_meta_for_size_validation"] = True
-        # TODO: new
         _safe_disk_wait(
             obj=raster_meta,
             path=unc_path(output_path),
@@ -960,7 +950,6 @@ def pixel_apply(
     progress: bool = True,
     return_output_path: bool = True,
     override: bool = True,
-    # TODO: new
     _space_wait_timeout: int = 6,
     _reserve_free_pct: float = 5.0,
     _preprocess_status: Optional[dict[str, Any]] = None,

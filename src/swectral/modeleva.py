@@ -1248,7 +1248,6 @@ class ModelEva:
             else:
                 mask_te = False
 
-            # TODO: correct for no share situation - fallback to train-test split
             # If there are shared samples for training and testing =====================================================
             if shared_mask.any():
 
@@ -1283,14 +1282,7 @@ class ModelEva:
                     dsp_inds = list(dsp_inds_shared)
                     validation_groups_shared = set(validation_group_arr[shared_mask.nonzero()[0]])
                     # Test-only IDs of new independent validation groups - evenly distributed ---------
-                    # te_only_ids_new = np.array(
-                    #     [
-                    #         ind
-                    #         for ind in te_only_ids
-                    #         if validation_group_arr[ind] not in validation_groups_shared
-                    #     ]
-                    # )
-                    # TODO: vectorized for large sample size and folds
+                    # Vectorized for large sample size and folds
                     if mask_te:
                         mask_not_shared = ~np.isin(validation_group_arr[te_only_ids], list(validation_groups_shared))
                         te_only_ids_new = te_only_ids[mask_not_shared]
@@ -1298,24 +1290,14 @@ class ModelEva:
                             te_new_chunk_size = len(te_only_ids_new) // len(dsp_inds_shared)
                             te_new_remaind = len(te_only_ids_new) % len(dsp_inds_shared)
                             te_new_start = 0
-                    # TODO: improved logic for validation groups
+                    # Improved logic for validation groups
                     for i, ttpair in enumerate(dsp_inds_shared):
                         ids_tr = ids_shared[ttpair[0]]
                         ids_te = ids_shared[ttpair[1]]
-                        # TODO: tr_groups_shared = set(self.validation_group[ids_tr])
                         # Append test-only samples
                         if mask_te:
                             # Test-only IDs of existed test validation groups -------------------------
-                            # TODO: te_only_ids_i = np.array(
-                            # te_only_ids_i_existed = np.array(
-                            #     [
-                            #         ind
-                            #         for ind in te_only_ids
-                            #         # TODO: if self.validation_group[ind] not in te_groups_shared
-                            #         if validation_group_arr[ind] in te_groups_shared
-                            #     ]
-                            # )
-                            # TODO: vectorized for large sample size and folds
+                            # Vectorized for large sample size and folds
                             te_groups_shared = set(validation_group_arr[ids_te])
                             mask_te_only_existed = np.isin(validation_group_arr[te_only_ids], list(te_groups_shared))
                             te_only_ids_i_existed = te_only_ids[mask_te_only_existed]
@@ -1327,18 +1309,9 @@ class ModelEva:
                             else:
                                 te_only_ids_i = te_only_ids_i_existed
                             ids_te = np.concatenate([ids_te, te_only_ids_i]).astype(int)
-                            # ids_fold_dist[i] = te_only_ids_i.tolist()
                         # Append train-only samples
                         if mask_tr:
-                            # tr_only_ids_i = np.array(
-                            #     [
-                            #         ind
-                            #         for ind in tr_only_ids
-                            #         # TODO: if self.validation_group[ind] not in tr_groups_shared
-                            #         if validation_group_arr[ind] not in te_groups_used
-                            #     ]
-                            # )
-                            # TODO: vectorized for large sample size and folds
+                            # Vectorized for large sample size and folds
                             te_groups_used = set(validation_group_arr[ids_te])
                             mask_tr_only_not_te = ~np.isin(validation_group_arr[tr_only_ids], list(te_groups_used))
                             tr_only_ids_i = tr_only_ids[mask_tr_only_not_te]
@@ -1360,15 +1333,13 @@ class ModelEva:
                     dsp_inds = []
                     for ttpair in dsp_inds_raw:
                         ids_tr = ttpair[0]
-                        # TODO: ids_tr1 = np.asarray([tr_id for tr_id in ids_tr if tr_mask[tr_id]])
-                        # TODO: vectorized for large sample size and folds
+                        # Vectorized for large sample size and folds
                         ids_tr1 = ids_tr[tr_mask[ids_tr]]
                         ids_te = ttpair[1]
                         if te_mask[ids_te[0]] and len(ids_tr1) > 0:
                             dsp_inds.append((ids_tr1, ids_te))
 
             # No-shared samples allowing both training and testing - fallback to train-test-split ----------------------
-            # TODO: new
             elif np.sum(te_mask) > 0 and np.sum(tr_mask) > 0:
                 ids_tr = tr_mask.nonzero()[0]
                 ids_te = te_mask.nonzero()[0]
@@ -1509,7 +1480,6 @@ class ModelEva:
                 y_true = y_test
                 y_pred = y_test_pred
                 y_pred_proba = y_test_pred_proba_df.reindex(columns=ynames)
-                # Old: y_pred_proba = pd.concat([pd.DataFrame(columns=ynames), y_test_pred_proba_df], ignore_index=True)
                 sid_eva = list(sid_test)
             else:
                 y_true = np.concatenate((y_true, y_test), axis=0)
@@ -1541,7 +1511,6 @@ class ModelEva:
         # Generate y_true_proba
         y_true_proba = pd.DataFrame(encoder.fit_transform(y_true), columns=encoder.categories_[0])
         y_true_proba = y_true_proba.reindex(columns=ynames)
-        # Old: y_true_proba = pd.concat([pd.DataFrame(columns=ynames), y_true_proba], ignore_index=True)
 
         # Replace pandas nan
         if hasattr(pd.DataFrame, 'map'):
@@ -1550,7 +1519,6 @@ class ModelEva:
         else:
             # pandas < 2.1.0
             y_pred_proba = y_pred_proba.applymap(lambda x: np.nan if pd.isna(x) else x)
-        # Old: y_pred_proba = y_pred_proba.applymap(lambda x: np.nan if pd.isna(x) else x)
 
         # Convert back to array
         y_true_proba = np.array(y_true_proba)
@@ -1600,7 +1568,6 @@ class ModelEva:
 
         # Write result to file
         task_time = self._model_time
-        # TODO: df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}.csv"), index=False)
         df_to_csv(
             dataframe=df_val,
             csv_path=unc_path(dout + f"Validation_results_{self.model_label}.csv"),
@@ -1614,7 +1581,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Validation_results_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(df_val, open(dill_result_path, "wb"))
         dump_dill(
             df_val,
             target_file_path=unc_path(dill_result_path),
@@ -1626,7 +1592,6 @@ class ModelEva:
         )
 
         if self.result_backup:
-            # TODO: df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"), index=False)  # noqa: E501
             df_to_csv(
                 dataframe=df_val,
                 csv_path=unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"),
@@ -1649,16 +1614,6 @@ class ModelEva:
             model_estimator_label = model._classifier_label
             combined_model_info_path = unc_path(dout + ".__swectral_dill_data/.__swectral_Combined_model_info.dill")
             os.makedirs(unc_path(os.path.dirname(combined_model_info_path)), exist_ok=True)
-            # TODO: changed
-            # dill.dump(
-            #     {
-            #         'model_transformers': model_transformers,
-            #         'model_estimator': model_estimator,
-            #         'model_preprocessor_labels': model_preprocessor_labels,
-            #         'model_estimator_label': model_estimator_label,
-            #     },
-            #     open(combined_model_info_path, "wb"),
-            # )
             dump_dill(
                 {
                     'model_transformers': model_transformers,
@@ -1780,7 +1735,6 @@ class ModelEva:
         )
         accuracy_macro = metrics_df["Accuracy"].mean()
         auc_macro = roc_auc_score(y_true_proba, y_pred_proba, average='macro')
-        # auc_macro = metrics_df["AUC"].mean()
         macro_precision = precision_score(y_true, y_pred, average="macro", zero_division=np.nan)
         macro_recall = recall_score(y_true, y_pred, average="macro", zero_division=np.nan)
         macro_f1 = f1_score(y_true, y_pred, average="macro", zero_division=np.nan)
@@ -1822,7 +1776,6 @@ class ModelEva:
 
         # Save metrics df to CSV
         task_time = self._model_time
-        # TODO: metrics_df.to_csv(unc_path(dout + f"Classification_performance_{self.model_label}.csv"), index=False)
         df_to_csv(
             dataframe=metrics_df,
             csv_path=unc_path(dout + f"Classification_performance_{self.model_label}.csv"),
@@ -1836,7 +1789,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Classification_performance_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(metrics_df, open(dill_result_path, "wb"))
         dump_dill(
             metrics_df,
             target_file_path=unc_path(dill_result_path),
@@ -1847,10 +1799,6 @@ class ModelEva:
             max_sec_random_wait=5.0,
         )
         if self.result_backup:
-            # TODO: changed
-            # metrics_df.to_csv(
-            #     unc_path(dout + f"Classification_performance_{self.model_label}_{task_time}.csv"), index=False
-            # )
             df_to_csv(
                 dataframe=metrics_df,
                 csv_path=unc_path(dout + f"Classification_performance_{self.model_label}_{task_time}.csv"),
@@ -2014,7 +1962,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_ROC_curve_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # dill.dump(plt.gcf(), open(dill_result_path, "wb"))
         dump_dill(
             plt.gcf(),
             target_file_path=unc_path(dill_result_path),
@@ -2125,7 +2072,6 @@ class ModelEva:
 
         # Save case report df to CSV
         task_time = self._model_time
-        # TODO: df_res.to_csv(unc_path(dout + f"Residual_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID")  # noqa: E501
         df_to_csv(
             dataframe=df_res,
             csv_path=unc_path(dout + f"Residual_analysis_{self.model_label}.csv"),
@@ -2140,7 +2086,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Residual_analysis_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(df_res, open(dill_result_path, "wb"))
         dump_dill(
             df_res,
             target_file_path=unc_path(dill_result_path),
@@ -2151,12 +2096,6 @@ class ModelEva:
             max_sec_random_wait=5.0,
         )
         if self.result_backup:
-            # TODO: changed
-            # df_res.to_csv(
-            #     unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
-            #     index=True,
-            #     index_label="Sample_ID",
-            # )
             df_to_csv(
                 dataframe=df_res,
                 csv_path=unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
@@ -2264,7 +2203,6 @@ class ModelEva:
             p_full = model_full.predict_proba(X_test)  # type: ignore[attr-defined]
             p_full = pd.DataFrame(p_full, columns=model_full.classes_, index=sid_test)  # type: ignore[attr-defined]
             p_full = p_full.reindex(columns=ynames)
-            # Old: p_full = pd.concat([pd.DataFrame(columns=ynames), p_full], ignore_index=True)
 
             # Replace pandas nan
             if hasattr(pd.DataFrame, 'map'):
@@ -2273,7 +2211,6 @@ class ModelEva:
             else:
                 # pandas < 2.1.0
                 p_full = p_full.applymap(lambda x: np.nan if pd.isna(x) else x)
-            # Old: p_full = p_full.applymap(lambda x: np.nan if pd.isna(x) else x)
 
             # Convert back to array
             y_p_test = np.array(y_p_test)
@@ -2310,7 +2247,6 @@ class ModelEva:
                 p_loo = model_loo.predict_proba(X_test)  # type: ignore[attr-defined]
                 p_loo = pd.DataFrame(p_loo, columns=model_loo.classes_)  # type: ignore[attr-defined]
                 p_loo = p_loo.reindex(columns=ynames)
-                # Old: p_loo = pd.concat([pd.DataFrame(columns=ynames), p_loo], ignore_index=True)
 
                 # Replace pandas nan
                 if hasattr(pd.DataFrame, 'map'):
@@ -2319,7 +2255,6 @@ class ModelEva:
                 else:
                     # pandas < 2.1.0
                     p_loo = p_loo.applymap(lambda x: np.nan if pd.isna(x) else x)
-                # Old: p_loo = p_loo.applymap(lambda x: np.nan if pd.isna(x) else x)
 
                 # Convert back to array
                 p_loo = np.array(p_loo)
@@ -2364,10 +2299,6 @@ class ModelEva:
 
         # Save metrics df to CSV
         task_time = self._model_time
-        # TODO: changed
-        # influence_df.to_csv(
-        #     unc_path(dout + f"Influence_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID"
-        # )
         df_to_csv(
             dataframe=influence_df,
             csv_path=unc_path(dout + f"Influence_analysis_{self.model_label}.csv"),
@@ -2382,7 +2313,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Influence_analysis_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(influence_df, open(dill_result_path, "wb"))
         dump_dill(
             influence_df,
             target_file_path=unc_path(dill_result_path),
@@ -2393,12 +2323,6 @@ class ModelEva:
             max_sec_random_wait=5.0,
         )
         if self.result_backup:
-            # TODO: changed
-            # influence_df.to_csv(
-            #     unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
-            #     index=True,
-            #     index_label="Sample_ID",
-            # )
             df_to_csv(
                 dataframe=influence_df,
                 csv_path=unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
@@ -2693,7 +2617,6 @@ class ModelEva:
 
         # Write result to file
         task_time = self._model_time
-        # TODO: df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}.csv"), index=False)
         df_to_csv(
             dataframe=df_val,
             csv_path=unc_path(dout + f"Validation_results_{self.model_label}.csv"),
@@ -2707,7 +2630,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Validation_results_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(df_val, open(dill_result_path, "wb"))
         dump_dill(
             df_val,
             target_file_path=unc_path(dill_result_path),
@@ -2718,7 +2640,6 @@ class ModelEva:
             max_sec_random_wait=5.0,
         )
         if self.result_backup:
-            # df_val.to_csv(unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"), index=False)
             df_to_csv(
                 dataframe=df_val,
                 csv_path=unc_path(dout + f"Validation_results_{self.model_label}_{task_time}.csv"),
@@ -2741,16 +2662,6 @@ class ModelEva:
             model_estimator_label = model._regressor_label
             combined_model_info_path = unc_path(dout + ".__swectral_dill_data/.__swectral_Combined_model_info.dill")
             os.makedirs(unc_path(os.path.dirname(combined_model_info_path)), exist_ok=True)
-            # TODO: changed
-            # dill.dump(
-            #     {
-            #         'model_transformers': model_transformers,
-            #         'model_estimator': model_estimator,
-            #         'model_preprocessor_labels': model_preprocessor_labels,
-            #         'model_estimator_label': model_estimator_label,
-            #     },
-            #     open(combined_model_info_path, "wb"),
-            # )
             dump_dill(
                 {
                     'model_transformers': model_transformers,
@@ -2836,7 +2747,6 @@ class ModelEva:
 
         # Save metrics df to CSV
         task_time = self._model_time
-        # TODO: metrics_df.to_csv(unc_path(dout + f"Regression_performance_{self.model_label}.csv"), index=False)
         df_to_csv(
             dataframe=metrics_df,
             csv_path=unc_path(dout + f"Regression_performance_{self.model_label}.csv"),
@@ -2850,7 +2760,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Regression_performance_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(metrics_df, open(dill_result_path, "wb"))
         dump_dill(
             metrics_df,
             target_file_path=unc_path(dill_result_path),
@@ -2861,10 +2770,6 @@ class ModelEva:
             max_sec_random_wait=5.0,
         )
         if self.result_backup:
-            # TODO: changed
-            # metrics_df.to_csv(
-            #     unc_path(dout + f"Regression_performance_{self.model_label}_{task_time}.csv"), index=False
-            # )
             df_to_csv(
                 dataframe=metrics_df,
                 csv_path=unc_path(dout + f"Regression_performance_{self.model_label}_{task_time}.csv"),
@@ -3024,7 +2929,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Scatter_plot_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(plt.gcf(), open(dill_result_path, "wb"))
         dump_dill(
             plt.gcf(),
             target_file_path=unc_path(dill_result_path),
@@ -3207,7 +3111,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Residual_plot_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(plt.gcf(), open(dill_result_path, "wb"))
         dump_dill(
             plt.gcf(),
             target_file_path=unc_path(dill_result_path),
@@ -3269,7 +3172,6 @@ class ModelEva:
 
         # Save case report df to CSV
         task_time = self._model_time
-        # TODO: df_res.to_csv(unc_path(dout + f"Residual_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID")  # noqa: E501
         df_to_csv(
             dataframe=df_res,
             csv_path=unc_path(dout + f"Residual_analysis_{self.model_label}.csv"),
@@ -3284,7 +3186,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Residual_analysis_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(df_res, open(dill_result_path, "wb"))
         dump_dill(
             df_res,
             target_file_path=unc_path(dill_result_path),
@@ -3295,12 +3196,6 @@ class ModelEva:
             max_sec_random_wait=5.0,
         )
         if self.result_backup:
-            # TODO: changed
-            # df_res.to_csv(
-            #     unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
-            #     index=True,
-            #     index_label="Sample_ID",
-            # )
             df_to_csv(
                 dataframe=df_res,
                 csv_path=unc_path(dout + f"Residual_analysis_{self.model_label}_{task_time}.csv"),
@@ -3391,7 +3286,6 @@ class ModelEva:
                 else:
                     # pandas < 2.1.0
                     p_loo = p_loo.applymap(lambda x: np.nan if pd.isna(x) else x)
-                # Old: p_loo = p_loo.applymap(lambda x: np.nan if pd.isna(x) else x)
 
                 # Convert back to array
                 p_loo = np.asarray(p_loo)
@@ -3434,10 +3328,6 @@ class ModelEva:
 
         # Save metrics df to CSV
         task_time = self._model_time
-        # TODO: changed
-        # influence_df.to_csv(
-        #     unc_path(dout + f"Influence_analysis_{self.model_label}.csv"), index=True, index_label="Sample_ID"
-        # )
         df_to_csv(
             dataframe=influence_df,
             csv_path=unc_path(dout + f"Influence_analysis_{self.model_label}.csv"),
@@ -3452,7 +3342,6 @@ class ModelEva:
             dout + f".__swectral_dill_data/.__swectral_core_result_Influence_analysis_{self.model_label}.dill"
         )
         os.makedirs(unc_path(os.path.dirname(dill_result_path)), exist_ok=True)
-        # TODO: dill.dump(influence_df, open(dill_result_path, "wb"))
         dump_dill(
             influence_df,
             target_file_path=unc_path(dill_result_path),
@@ -3463,12 +3352,6 @@ class ModelEva:
             max_sec_random_wait=5.0,
         )
         if self.result_backup:
-            # TODO: changed
-            # influence_df.to_csv(
-            #     unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
-            #     index=True,
-            #     index_label="Sample_ID",
-            # )
             df_to_csv(
                 dataframe=influence_df,
                 csv_path=unc_path(dout + f"Influence_analysis_{self.model_label}_{task_time}.csv"),
@@ -3720,7 +3603,6 @@ class ModelEva:
 
         # Train model on entire data set
         model.fit(X, y.flatten())  # type: ignore[attr-defined]
-        # Custom model, independent runtime validated, following the same
 
         # Store trained model
         self._app_model = model
@@ -3739,10 +3621,6 @@ class ModelEva:
             os.makedirs(unc_path(dout), exist_ok=True)
             dump_path = unc_path(dout + dump_name + ".dill")
             dump_path1 = unc_path(dout + dump_name1 + ".dill")
-            # Dump model
-            # TODO: changed
-            # with open(dump_path, "wb") as f:
-            #     dill.dump(dump_dict, f)
             dump_dill(
                 dump_dict,
                 target_file_path=unc_path(dump_path),
@@ -3754,9 +3632,6 @@ class ModelEva:
             )
             # Dump model backup
             if self.result_backup:
-                # TODO: changed
-                # with open(dump_path1, "wb") as f:
-                #     dill.dump(dump_dict, f)
                 dump_dill(
                     dump_dict,
                     target_file_path=unc_path(dump_path1),
@@ -3823,7 +3698,6 @@ class ModelEva:
             df_yp1 = pd.DataFrame(
                 y_test_proba,
                 columns=[(str(yn) + "_prob") for yn in fold_model.classes_],  # type: ignore[attr-defined]
-                # Custom model, independent runtime validated, following the same
                 index=sid_test,
             )
             ynames = self._ynames
@@ -3851,9 +3725,6 @@ class ModelEva:
         dump_path1 = unc_path(dout + dump_name1 + ".dill")
 
         # Dump model
-        # TODO: changed
-        # with open(dump_path, "wb") as f:
-        #     dill.dump(dump_dict, f)
         dump_dill(
             dump_dict,
             target_file_path=unc_path(dump_path),
@@ -3864,9 +3735,6 @@ class ModelEva:
             max_sec_random_wait=5.0,
         )
         if self.result_backup:
-            # TODO: changed
-            # with open(dump_path1, "wb") as f:
-            #     dill.dump(dump_dict, f)
             dump_dill(
                 dump_dict,
                 target_file_path=unc_path(dump_path1),
@@ -3881,7 +3749,6 @@ class ModelEva:
         if dump_associated_data:
             wname_X0 = f"val_X-train_fold-{fold_i}_{self._model_label}"  # noqa: N806
             wpath_X0 = unc_path(dout + wname_X0 + ".csv")  # noqa: N806
-            # TODO: df_X0.to_csv(wpath_X0, header=True, index=True, index_label="Sample_ID")
             df_to_csv(
                 dataframe=df_X0,
                 csv_path=wpath_X0,
@@ -3895,7 +3762,6 @@ class ModelEva:
             )
             wname_X1 = f"val_X-test_fold-{fold_i}_{self._model_label}"  # noqa: N806
             wpath_X1 = unc_path(dout + wname_X1 + ".csv")  # noqa: N806
-            # TODO: df_X1.to_csv(wpath_X1, header=True, index=True, index_label="Sample_ID")
             df_to_csv(
                 dataframe=df_X1,
                 csv_path=wpath_X1,
@@ -3909,7 +3775,6 @@ class ModelEva:
             )
             wname_y = f"val_y_fold-{fold_i}_{self._model_label}"
             wpath_y = unc_path(dout + wname_y + ".csv")
-            # TODO: dfr.to_csv(wpath_y, header=True, index=True, index_label="Sample_ID")
             df_to_csv(
                 dataframe=dfr,
                 csv_path=wpath_y,
@@ -3926,7 +3791,6 @@ class ModelEva:
         if self.result_backup:
             wname_X0 = f"val_X-train_fold-{fold_i}_{self._model_label}_{self._model_time}"  # noqa: N806
             wpath_X0 = unc_path(dout + wname_X0 + ".csv")  # noqa: N806
-            # TODO: df_X0.to_csv(wpath_X0, header=True, index=True, index_label="Sample_ID")
             df_to_csv(
                 dataframe=df_X0,
                 csv_path=wpath_X0,
@@ -3940,7 +3804,6 @@ class ModelEva:
             )
             wname_X1 = f"val_X-test_fold-{fold_i}_{self._model_label}_{self._model_time}"  # noqa: N806
             wpath_X1 = unc_path(dout + wname_X1 + ".csv")  # noqa: N806
-            # TODO: df_X1.to_csv(wpath_X1, header=True, index=True, index_label="Sample_ID")
             df_to_csv(
                 dataframe=df_X1,
                 csv_path=wpath_X1,
@@ -3954,7 +3817,6 @@ class ModelEva:
             )
             wname_y = f"val_y_fold-{fold_i}_{self._model_label}_{self._model_time}"
             wpath_y = unc_path(dout + wname_y + ".csv")
-            # TODO: dfr.to_csv(wpath_y, header=True, index=True, index_label="Sample_ID")
             df_to_csv(
                 dataframe=dfr,
                 csv_path=wpath_y,

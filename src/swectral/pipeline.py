@@ -301,7 +301,7 @@ class SpecPipe:
         # SpecExp._rois: [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs]
         self._spec_exp: SpecExp = spec_exp
 
-        # TODO: File output parameters
+        # File output parameters
         self._spec_exp._space_wait_timeout = max(0, space_wait_timeout)
         self._spec_exp._reserve_free_pct = max(0.01, reserve_free_pct)
         self._space_wait_timeout: int = max(0, space_wait_timeout)
@@ -571,7 +571,6 @@ class SpecPipe:
         try:
             self._spec_exp = spec_exp
             # Set SpecExp saving parameters
-            # TODO: new
             self._spec_exp._space_wait_timeout = self._space_wait_timeout
             self._spec_exp._reserve_free_pct = self._reserve_free_pct
             # Update SpecExp-related SpecPipe data
@@ -675,7 +674,6 @@ class SpecPipe:
 
             # Testing spectrum table
             td2 = pd.DataFrame(roitable, columns=[("Band_" + str(i + 1)) for i in range(roitable.shape[1])])
-            # TODO: td2.to_csv(unc_path(sdir + "Pre_execution_data_roi_specs.csv"), index=False)
             df_to_csv(
                 dataframe=td2,
                 csv_path=unc_path(sdir + "Pre_execution_data_roi_specs.csv"),
@@ -722,7 +720,6 @@ class SpecPipe:
 
             # Testing spectrum table
             td2 = pd.DataFrame([list(spec1d)], columns=[("Band_" + str(i + 1)) for i in range(len(spec1d))])
-            # TODO: td2.to_csv(unc_path(sdir + "Pre_execution_data_standalone_specs.csv"), index=False)
             df_to_csv(
                 dataframe=td2,
                 csv_path=unc_path(sdir + "Pre_execution_data_standalone_specs.csv"),
@@ -776,7 +773,6 @@ class SpecPipe:
         influence_analysis_config: Union[str, dict[str, Any], None] = "default",
         save_application_model: bool = True,
     ) -> None:
-        # TODO: edit docstring
         """
         Add a model evaluation process to the processing pipeline.
 
@@ -1070,8 +1066,6 @@ class SpecPipe:
         """  # noqa: E501
 
         # Process general parameters
-        # TODO: Determine input data level
-        # TODO: input_data_level = 7
         if input_data_level is None:
             if len(self.ls_process(output_data_level=8, return_result=True, print_result=False)) == 0:
                 input_data_level = 7
@@ -1326,7 +1320,6 @@ class SpecPipe:
         influence_analysis_config: Union[str, dict[str, Any], None] = "default",
         save_application_model: bool = True,
     ) -> None:
-        # TODO: edit docstring
         """
         Add a processing method with defined input/output data levels and application sequence to the pipeline.
         A processing method can be a preprocessing function or a model for evaluation.
@@ -1677,7 +1670,7 @@ class SpecPipe:
         # Full application sequence
         fapp_seq = 2000000 * dl_in_ind * (dl_in_ind > 4) + 1000000 * int(dl_in_ind != dl_out_ind) + application_sequence
 
-        # TODO: Validate processing-ready data availability for assembly or model process
+        # Validate processing-ready data availability for assembly or model process
         if dl_out_ind >= 8:
             existed_spec1d_output = [proc for proc in self.process if proc[3] == 'spec1d']
             if len(existed_spec1d_output) < 1 and len(self.spec_exp.standalone_specs_sample) < 1:
@@ -1686,7 +1679,7 @@ class SpecPipe:
                     + f"nor standalone spectra is available for given {dl_out_name} process."
                 )
 
-        # TODO: Validate data levels and data level sequence
+        # Validate data levels and data level sequence
         self._process = _data_level_seq_validator(
             input_data_level=input_data_level,
             output_data_level=output_data_level,
@@ -1730,7 +1723,6 @@ class SpecPipe:
         proc_id = str(dl_in_ind) + "_" + str(appseq_for_id) + "_%#" + str(proc_num_new)
 
         # Preprocess - Validate preprocess methods ---------------------------------------------------------------------
-        # TODO: if dl_out_ind < 8:
         if dl_out_ind <= 7:
             try:
                 proc_method = _process_validator(
@@ -1747,7 +1739,6 @@ class SpecPipe:
                 else:
                     warnings.warn(f"Method fails on '{input_data_level}' validation data", UserWarning, stacklevel=2)
 
-        # TODO: new
         # Assembly - Validate assembly methods -------------------------------------------------------------------------
         elif dl_out_ind == 8:
             proc_method = _assembly_method_validator(
@@ -2527,8 +2518,6 @@ class SpecPipe:
             input_data_level = _dl_val(step[0][0])[0]
             output_data_level = _dl_val(step[0][1])[0]
             if not (
-                # TODO: Duplicated ID bug fixes
-                # TODO: (input_data_level == dl_in_p and output_data_level >= dl_out_p) or (_dl_val(input_data_level)[0] <= 4)  # noqa: E501
                 (input_data_level == dl_in_p and output_data_level >= dl_out_p)
                 or (_dl_val(input_data_level)[0] <= 4)
             ):
@@ -2567,13 +2556,11 @@ class SpecPipe:
                     **params,
                 )
             # Update dl
-            # TODO: Duplicated ID bug fixes
-            # TODO: if (input_data_level == dl_in_p and output_data_level == dl_out_p) or (_dl_val(input_data_level)[0] <= 4):  # noqa: E501
             if (input_data_level == dl_in_p and output_data_level >= dl_out_p) or (_dl_val(input_data_level)[0] <= 4):
                 appseq = appseq + 1
 
     # List process chains ==============================================================================================
-    # TODO: Helper: get and update stage step IDs - (0:) preprocessing step: assembly step: modeling step
+    # Helper: get and update stage step IDs - (0:) preprocessing step: assembly step: modeling step
     def _get_last_step_indices_per_stage(self) -> tuple[int, int, int]:
         """
         Get the indices of the last step of each stage in the processing chain.
@@ -2962,12 +2949,6 @@ class SpecPipe:
         df_exec_chains, df_exec_chains_label = self.ls_chains(print_label=False, return_label=True)
 
         # Save configs
-        # TODO: changed
-        # df_process.to_csv(unc_path(report_dir + "SpecPipe_added_process.csv"), index=False)
-        # df_full_chains.to_csv(unc_path(report_dir + "SpecPipe_full_factorial_chains_in_ID.csv"), index=False)
-        # df_full_chains_label.to_csv(unc_path(report_dir + "SpecPipe_full_factorial_chains_in_label.csv"), index=False)
-        # df_exec_chains.to_csv(unc_path(report_dir + "SpecPipe_exec_chains_in_ID.csv"), index=False)
-        # df_exec_chains_label.to_csv(unc_path(report_dir + "SpecPipe_exec_chains_in_label.csv"), index=False)
         df_to_csv(
             dataframe=df_process,
             csv_path=unc_path(report_dir + "SpecPipe_added_process.csv"),
@@ -3015,7 +2996,6 @@ class SpecPipe:
         )
 
         # Save SpecPipe
-        # TODO: changed
         config_dill_path = unc_path(f"{report_dir}SpecPipe_pipeline_configuration_{self.create_time}.dill")
         dump_dill(
             self,
@@ -3033,14 +3013,6 @@ class SpecPipe:
             time.sleep(1.0)
             # Dump copy
             cts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            # TODO: changed
-            # df_process.to_csv(unc_path(report_dir + f"SpecPipe_added_process_{cts}.csv"), index=False)
-            # df_full_chains.to_csv(unc_path(report_dir + f"SpecPipe_full_factorial_chains_in_ID_{cts}.csv"), index=False)  # noqa: E501
-            # df_full_chains_label.to_csv(
-            #     unc_path(report_dir + f"SpecPipe_full_factorial_chains_in_label_{cts}.csv"), index=False
-            # )
-            # df_exec_chains.to_csv(unc_path(report_dir + f"SpecPipe_exec_chains_in_ID_{cts}.csv"), index=False)
-            # df_exec_chains_label.to_csv(unc_path(report_dir + f"SpecPipe_exec_chains_in_label_{cts}.csv"), index=False)  # noqa: E501
             df_to_csv(
                 dataframe=df_process,
                 csv_path=unc_path(report_dir + f"SpecPipe_added_process_{cts}.csv"),
@@ -3102,7 +3074,6 @@ class SpecPipe:
 
         # Save SpecExp
         if save_spec_exp_config:
-            # TODO: changed
             self.spec_exp.save_data_config(
                 copy=copy,
                 _space_wait_timeout=self.space_wait_timeout,
@@ -3177,16 +3148,66 @@ class SpecPipe:
             dump_path0 = config_file_path
 
         # Load to instance
-        # TODO: changed
-        # with open(unc_path(dump_path0), 'rb') as f:
-        #     loaded_instance = dill.load(f)
         loaded_instance = load_dill(unc_path(dump_path0))
-        # self.__dict__.update(loaded_instance.__dict__)
         for key, value in loaded_instance.__dict__.items():
             object.__setattr__(self, key, value)
 
     # Alias
     load_config = load_pipe_config
+
+    # Space validator
+    @simple_type_validator
+    def _val_disk_space_preprocessing(self, image: bool = True, plot: bool = True, error_raise: bool = True) -> None:
+        """Output image and plot size estimator"""
+
+        # Estimate output image size
+        # Get number of image processing chains
+        applied_chains = self.ls_chains(print_label=False)
+        n_img_chains = _num_image_chains(applied_chains)
+        # Get image paths
+        img_paths = self.spec_exp.ls_images(print_result=False, return_dataframe=True)["Path"].tolist()
+        # Check image to roispecs process
+        n_roispecs_process = len(
+            self.ls_process(input_data_level=5, output_data_level=6, print_result=False, return_result=True)
+        )
+        has_roispecs = n_roispecs_process > 0
+        # Compute total size
+        output_img_size = _estimate_img_output_size(
+            img_paths=img_paths,
+            n_img_chains=n_img_chains,
+            roispecs=has_roispecs,
+        )
+
+        # Estimate output plot size
+        output_plot_size = _estimate_report_plot_size(len(applied_chains), is_regression=self._is_target_numeric)
+
+        # Output size
+        if image & plot:
+            output_size = output_img_size + output_plot_size
+        elif image & (not plot):
+            output_size = output_img_size
+        elif plot & (not image):
+            output_size = output_plot_size
+        else:
+            output_size = 0
+        # Available space
+        available_space: int = shutil.disk_usage(self.report_directory).free
+        # Validate available space
+        if available_space < output_size:
+            if error_raise:
+                raise OSError(
+                    f"Insufficient disk space: estimated output size is {output_size} bytes, "
+                    f"which may exceed the available disk space ({available_space} bytes)."
+                )
+            else:
+                warnings.warn(
+                    f"Insufficient disk space: estimated output size is {output_size} bytes, "
+                    f"which may exceed the available disk space ({available_space} bytes).",
+                    ResourceWarning,
+                    stacklevel=2,
+                )
+        else:
+            return None
 
     # Pre-execution pipeline validation ================================================================================
     # Test run of processing chains
@@ -3203,7 +3224,6 @@ class SpecPipe:
         test_modeling: bool = True,
         return_result: bool = False,
         model_test_coverage: float = 1.0,
-        # TODO: new
         assembly_test_coverage: float = 1.0,
         dump_result: bool = True,
         dump_backup: bool = False,
@@ -3308,7 +3328,7 @@ class SpecPipe:
         if not save_preprocessed_images:
             shutil.rmtree(preprocessed_img_dir)
 
-        # TODO: Assembly configuration if provided
+        # Assembly configuration if provided
         assembly_ids = [pit[0] for pit in self.process if pit[3] == "assembly"]
         if len(assembly_ids) > 0:
             assembly_coverage = min(assembly_test_coverage + 1e-10, 1.0)
@@ -3459,7 +3479,7 @@ class SpecPipe:
                                 )
                                 for i in range(sample_min_size)
                             ]
-                        # TODO: Assembly
+                        # Assembly
                         # Random select assembly chains
                         if assembly_coverage > 0:
                             assembly_ids = [pit[0] for pit in self.process if pit[3] == "assembly"]
@@ -3515,60 +3535,6 @@ class SpecPipe:
                         + f"Step ID: {status_result[0]}\n"
                         + f"Processing chain: {status_result[1]}\n"
                     )
-
-    # Space validator
-    @simple_type_validator
-    def _val_disk_space_preprocessing(self, image: bool = True, plot: bool = True, error_raise: bool = True) -> None:
-        """Output image and plot size estimator"""
-
-        # Estimate output image size
-        # Get number of image processing chains
-        applied_chains = self.ls_chains(print_label=False)
-        n_img_chains = _num_image_chains(applied_chains)
-        # Get image paths
-        img_paths = self.spec_exp.ls_images(print_result=False, return_dataframe=True)["Path"].tolist()
-        # Check image to roispecs process
-        n_roispecs_process = len(
-            self.ls_process(input_data_level=5, output_data_level=6, print_result=False, return_result=True)
-        )
-        has_roispecs = n_roispecs_process > 0
-        # Compute total size
-        output_img_size = _estimate_img_output_size(
-            img_paths=img_paths,
-            n_img_chains=n_img_chains,
-            roispecs=has_roispecs,
-        )
-
-        # Estimate output plot size
-        output_plot_size = _estimate_report_plot_size(len(applied_chains), is_regression=self._is_target_numeric)
-
-        # Output size
-        if image & plot:
-            output_size = output_img_size + output_plot_size
-        elif image & (not plot):
-            output_size = output_img_size
-        elif plot & (not image):
-            output_size = output_plot_size
-        else:
-            output_size = 0
-        # Available space
-        available_space: int = shutil.disk_usage(self.report_directory).free
-        # Validate available space
-        if available_space < output_size:
-            if error_raise:
-                raise OSError(
-                    f"Insufficient disk space: estimated output size is {output_size} bytes, "
-                    f"which may exceed the available disk space ({available_space} bytes)."
-                )
-            else:
-                warnings.warn(
-                    f"Insufficient disk space: estimated output size is {output_size} bytes, "
-                    f"which may exceed the available disk space ({available_space} bytes).",
-                    ResourceWarning,
-                    stacklevel=2,
-                )
-        else:
-            return None
 
     # Processing methods ===============================================================================================
     # Run preprocessing ================================================================================================
@@ -3837,7 +3803,6 @@ class SpecPipe:
         Output sample results from all processing chains to files and update the resulting file paths.
         """
         # Store SpecExp configs
-        # TODO: changed
         self.spec_exp.save_data_config(
             copy=dump_backup,
             _space_wait_timeout=self.space_wait_timeout,
@@ -4066,7 +4031,6 @@ class SpecPipe:
             )
 
     # Apply sample assembly process ====================================================================================
-    # TODO: new
     @simple_type_validator
     def assembly(  # noqa: C901
         self,
@@ -4423,7 +4387,7 @@ class SpecPipe:
         # model_ids = [pit[0] for pit in self.process if pit[3] == "model"]
         assembly_ids = [pit[0] for pit in self.process if pit[3] == "assembly"]
 
-        # TODO: Sample_list data dir
+        # Sample_list data dir
         if len(assembly_ids) > 0:
             sample_list_data_dir = result_directory + "Assembly/"
         else:
@@ -4447,28 +4411,13 @@ class SpecPipe:
             process_chains = self.process_chains
 
         # Get pre-modeling processing chain step numbers
-        # preprocess_chain_length = len([
-        #     proc_id for proc_id in process_chains[0]
-        #     if (proc_id not in assembly_ids) and (proc_id not in model_ids)
-        # ])
-        # n_non_preprocess_step = len(process_chains[0]) - preprocess_chain_length
         n_non_preprocess_step = self._get_last_step_indices_per_stage()[2] - self._get_last_step_indices_per_stage()[0]
-
-        # Validate preprocessing result file paths
-        # TODO: changed
-        # Get preprocess chains of all preprocessing steps
-        # pchains = []
-        # for chain in self.process_chains:
-        #     pchain = chain[:-1]
-        #     if pchain not in pchains:
-        #         pchains.append(pchain)
 
         # Get pre-modeling processing chains
         pchains = list({chain[:-n_non_preprocess_step] for chain in process_chains})
         assembly_chains = list({chain[-n_non_preprocess_step:-1] for chain in process_chains})
         pachains = list({chain[:-1] for chain in process_chains})
 
-        # TODO: changed
         # Validate result file existence
         cd_paths: list
         if n_non_preprocess_step == 1:
@@ -4488,10 +4437,8 @@ class SpecPipe:
                     )
 
         pachains_f = []  # preprocessing-assembly chains from file
-        # TODO: for pci, cdp in enumerate(cd_paths):
         for cdp in cd_paths:
             if not os.path.exists(unc_path(cdp)):
-                # TODO: raise ValueError(f"\nPreprocessing result file of chain {pchains[pci]} not found, path : \n{cdp}\n")  # noqa: E501
                 raise FileNotFoundError(f"\nPreprocessing-assembly result file not found, expected path : \n{cdp}\n")
             cprocs = load_dill(unc_path(cdp))["chain_procs"]
             pachains_f.append(cprocs)
@@ -4564,9 +4511,6 @@ class SpecPipe:
                         pc_sample_list = _target_type_validation_for_serialization(pc_sample_list)
                         pchain = pc_it["chain_procs"]  # Including assembly steps
                         # Use preprocess chain ID as chain label
-                        # TODO: changed
-                        # pproc_chain_label = [
-                        #     f"Preprocessing_#{pci}" for pci, pc in enumerate(pachains) if pc == pchain][0]
                         pproc_chain_label = f"Preprocessing_#{pc_it['chain_ind']}"
                         _model_evaluator(
                             preprocess_result=pc_sample_list,

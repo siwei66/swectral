@@ -224,7 +224,7 @@ def combine_classifier(  # noqa: C901
     classifier: object,
     trainable_processor_label: Union[str, list[str], None] = None,
     classifier_label: Optional[str] = None,
-    preserve_train_state: bool = False,  # TODO: new
+    preserve_train_state: bool = False,
 ) -> object:
     """
     Combine trainable data preprocessing models with a classifier into a unified estimator that preserves component names.
@@ -336,7 +336,7 @@ def combine_classifier(  # noqa: C901
     combined_model = CombinedModel(
         trainable_processors=trainable_processors,
         classifier=classifier,
-        preserve_train_state=preserve_train_state,  # TODO: new
+        preserve_train_state=preserve_train_state,
     )
 
     return combined_model
@@ -349,7 +349,7 @@ def combine_regressor(  # noqa: C901
     regressor: object,
     trainable_processor_label: Union[str, list[str], None] = None,
     regressor_label: Optional[str] = None,
-    preserve_train_state: bool = False,  # TODO: new
+    preserve_train_state: bool = False,
 ) -> object:
     """
     Combine trainable data preprocessing models with a regressor into a unified estimator that preserves component names.
@@ -425,7 +425,6 @@ def combine_regressor(  # noqa: C901
             trainable_processor_name = trainable_processor_name + f"{trainable_processor.__class__.__name__}_"
             trainable_processor_name_list.append(trainable_processor.__class__.__name__)
     else:
-        # TODO: new
         if isinstance(trainable_processor_label, str):
             trainable_processor_label = [trainable_processor_label]
         assert isinstance(trainable_processor_label, list)
@@ -462,7 +461,7 @@ def combine_regressor(  # noqa: C901
     combined_model = CombinedModel(
         trainable_processors=trainable_processors,
         regressor=regressor,
-        preserve_train_state=preserve_train_state,  # TODO: new
+        preserve_train_state=preserve_train_state,
     )
 
     return combined_model
@@ -545,18 +544,14 @@ class CombinedClassifier(BaseEstimator, ClassifierMixin):
             else:
                 _data_transformer_validator(trainable_processor)
         self.trainable_processors: list[object] = trainable_processors
-        # TODO: new
         self.trainable_processors_: Optional[list[object]] = None
         # Validate classifiers
         _classifier_validator(classifier)
         self.classifier: object = classifier
-        # TODO: new
         self.classifier_: Optional[object] = None
-        # TODO: new
         self.preserve_train_state: bool = preserve_train_state
         self._is_combined_classifier: bool = True
 
-    # TODO: new
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         """get_params for sklearn.GridSearchCV."""
         # Get top-level params automatically via BaseEstimator
@@ -571,7 +566,6 @@ class CombinedClassifier(BaseEstimator, ClassifierMixin):
                         params[f"processor_{i}__{key}"] = value
         return params
 
-    # TODO: new
     def set_params(self, **params: Any) -> "CombinedClassifier":
         """set_params for sklearn.GridSearchCV."""
         if not params:
@@ -617,7 +611,6 @@ class CombinedClassifier(BaseEstimator, ClassifierMixin):
         CombinedClassifier
             The fitted combined model.
         """
-        # TODO: new
         # Clone models
         self.trainable_processors_ = [
             safe_clone(trainable_processor, self.preserve_train_state)
@@ -629,7 +622,6 @@ class CombinedClassifier(BaseEstimator, ClassifierMixin):
         X, y = check_X_y(X, y)
         # Fit trainable preprocessors and transform X_train
         for trainable_processor in self.trainable_processors_:
-            # TODO: new
             # imblearn-style sampler
             if hasattr(trainable_processor, "fit_resample"):
                 X, y = trainable_processor.fit_resample(X, y)
@@ -682,7 +674,6 @@ class CombinedClassifier(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
         X = check_array(X)
-        # TODO: changed
         assert self.trainable_processors_ is not None
         for trainable_processor in self.trainable_processors_:
             if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
@@ -709,10 +700,8 @@ class CombinedClassifier(BaseEstimator, ClassifierMixin):
         X = np.asarray(X)
         X = check_array(X)
         # Transform X_pred
-        # TODO: changed
         assert self.trainable_processors_ is not None
         for trainable_processor in self.trainable_processors_:
-            # TODO: changed
             if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
                 X = trainable_processor.transform(X)
         # Predict using classifier
@@ -740,7 +729,6 @@ class CombinedClassifier(BaseEstimator, ClassifierMixin):
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
         X = check_array(X)
-        # TODO: changed
         assert self.trainable_processors_ is not None
         for trainable_processor in self.trainable_processors_:
             if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
@@ -774,7 +762,6 @@ class CombinedClassifier(BaseEstimator, ClassifierMixin):
         """
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
-        # TODO: changed
         assert self.trainable_processors_ is not None
         for trainable_processor in self.trainable_processors_:
             if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
@@ -835,18 +822,14 @@ class CombinedRegressor(BaseEstimator, RegressorMixin):
             else:
                 _data_transformer_validator(trainable_processor)
         self.trainable_processors: list[object] = trainable_processors
-        # TODO: new
         self.trainable_processors_: Optional[list[object]] = None
         # Validate regressors
         _regressor_validator(regressor)
         self.regressor: object = regressor
-        # TODO: new
         self.regressor_: Optional[object] = None
-        # TODO: new
         self.preserve_train_state: bool = preserve_train_state
         self._is_combined_regressor: bool = True
 
-    # TODO: new
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         """get_params for sklearn.GridSearchCV."""
         # Get top-level params automatically via BaseEstimator
@@ -861,7 +844,6 @@ class CombinedRegressor(BaseEstimator, RegressorMixin):
                         params[f"processor_{i}__{key}"] = value
         return params
 
-    # TODO: new
     def set_params(self, **params: Any) -> "CombinedRegressor":
         """set_params for sklearn.GridSearchCV."""
         if not params:
@@ -907,7 +889,6 @@ class CombinedRegressor(BaseEstimator, RegressorMixin):
         CombinedRegressor
             The fitted combined model.
         """
-        # TODO: new
         # Clone models
         self.trainable_processors_ = [
             safe_clone(trainable_processor, self.preserve_train_state)
@@ -919,7 +900,6 @@ class CombinedRegressor(BaseEstimator, RegressorMixin):
         X, y = check_X_y(X, y)
         # Fit trainable preprocessors and transform X_train
         for trainable_processor in self.trainable_processors_:
-            # TODO: new
             # imblearn-style sampler
             if hasattr(trainable_processor, "fit_resample"):
                 X, y = trainable_processor.fit_resample(X, y)
@@ -965,7 +945,6 @@ class CombinedRegressor(BaseEstimator, RegressorMixin):
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
         X = check_array(X)
-        # TODO: changed
         assert self.trainable_processors_ is not None
         for trainable_processor in self.trainable_processors_:
             if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
@@ -992,10 +971,8 @@ class CombinedRegressor(BaseEstimator, RegressorMixin):
         X = np.asarray(X)
         X = check_array(X)
         # Transform X_pred
-        # TODO: changed
         assert self.trainable_processors_ is not None
         for trainable_processor in self.trainable_processors_:
-            # TODO: changed
             if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):
                 X = trainable_processor.transform(X)
         # Predict using regressor
@@ -1028,7 +1005,6 @@ class CombinedRegressor(BaseEstimator, RegressorMixin):
         """
         check_is_fitted(self, 'is_fitted_')
         X = np.asarray(X)
-        # TODO: changed
         assert self.trainable_processors_ is not None
         for trainable_processor in self.trainable_processors_:
             if hasattr(trainable_processor, 'transform') and (not hasattr(trainable_processor, 'fit_resample')):

@@ -1100,7 +1100,7 @@ def bandquant(
 # %% Common and custom statistical measures for 2D array-like
 
 
-# TODO: Helper: invalid measure
+# Helper: invalid measure
 @simple_type_validator
 def invalid_measure(
     v: Annotated[Any, arraylike_validator(ndim=2, as_type=float)],

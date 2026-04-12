@@ -109,11 +109,9 @@ def _dl_val(data_level: Union[str, int]) -> tuple[int, str]:
         "image_roi",
         "roi_specs",
         "spec1d",
-        # TODO: new
         "assembly",
         "model",
     ]
-    # TODO: data_level_n = [0, 1, 2, 3, 4, 5, 6, 7, 8]
     data_level_n = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     if type(data_level) is str:
         if data_level.lower() not in data_levels:
@@ -154,9 +152,7 @@ def _data_level_seq_validator(  # noqa: C901
     fapp_seq = full_application_sequence
 
     # Validate input data level
-    # TODO: if dl_in_ind >= 8:
     if dl_in_ind >= 9:
-        # TODO: changed err msg
         raise ValueError("Input data level cannot be 'model' or 9 (corresponding index).")
 
     # Validate output data level
@@ -177,7 +173,7 @@ def _data_level_seq_validator(  # noqa: C901
     if (application_sequence < 0) | (application_sequence > 999999):
         raise ValueError("Application sequence must be within [0, 1,000,000), " + f"got: {application_sequence}")
 
-    # TODO: Validate assembly step input data level
+    # Validate assembly step input data level
     if dl_out_ind == 8:
         if dl_in_ind < 7 or dl_in_ind > 8:
             raise ValueError(
@@ -206,7 +202,7 @@ def _data_level_seq_validator(  # noqa: C901
                 stacklevel=2,
             )
 
-    # TODO: Validate and correct model step input data level
+    # Validate and correct model step input data level
     if dl_out_ind == 9:
         existed_assembly_procs = [proc for proc in existed_process if proc[3] == 'assembly']
         if len(existed_assembly_procs) > 0:
@@ -416,7 +412,6 @@ def _process_validator(  # noqa: C901
         test_img_path = pretest_data["test_img_path"]
 
         # Test data
-        # TODO: if dl_out < 8:
         if dl_out <= 7:
             # Validate function
             if not callable(method):
@@ -508,9 +503,7 @@ def _process_validator(  # noqa: C901
                 testing_data = pretest_data["spec1d"]
                 assert callable(method)
                 result = method(testing_data)
-            # TODO: add new
             else:
-                # TODO: changed err msg
                 raise ValueError("Input data level cannot be 'model' or 9 (corresponding index).")
         else:
             # Model method is not validated here
@@ -630,7 +623,6 @@ def _process_validator(  # noqa: C901
                 "Method for one-dimensional standalone spectra cannot have output data level below 7 ('spec1d'), "
                 + f"but got level number: {dl_out}"
             )
-        # TODO: if dl_out == 8:
         if dl_out > 7:
             # Model method is not validated here
             return method
@@ -674,7 +666,7 @@ def _process_validator(  # noqa: C901
 # %% Assembly method validator
 
 
-# TODO: _assembly_validator
+# Assembly method validator
 # Sample_list item: (0 - Sample id, 1 - Sample label, 2 - Validation group, 3 - Test mask, 4 - Train mask, 5 - Original shape, 6 - Target value, 7 - Sample predictor values)  # noqa: E501
 # list[tuple[str, str, str, np.int8, np.int8, tuple[int, ...], Any, Annotated[Any, arraylike_validator(ndim=1)]]]
 @simple_type_validator
@@ -716,7 +708,7 @@ def _assembly_method_validator(
 # %% Validate _sample_list_constructor resulting file integrity
 
 
-# TODO: _pre_assembly_data_validator
+# _pre_assembly_data_validator
 @simple_type_validator
 def _pre_assembly_data_validator(
     report_directory: str,  # swectral.report_directory
