@@ -34,6 +34,9 @@ from functools import partial
 # Multiprocessing
 from pathos.multiprocessing import ProcessingPool, cpu_count
 
+# Raster operation
+import rasterio
+
 # Local
 from .specio import (
     arraylike_validator,
@@ -1858,13 +1861,37 @@ class SpecExp:
             # Print err
             print("\nLoading from following ROI files failed:\n", fail_list)
 
-    # TODO : Auto-ROI - Not implemented in current version
-    # Function : Each image as a sample, generate multipolygon ROIs of all valid regions of the image using a mask value
+    # Generate multipolygon ROIs of bbox of the images
+    def add_rois_from_bbox(self) -> None:
+        """
+        Converts added sample images into bounding-box ROIs and updates ``rois_from_coords``.
+        """
+        # Extract coordinates and add ROIs
+        for img in self.images:
+            group = img[1]
+            image_name = img[2]
+            image_path = img[4]
+            # Fetch image bounds
+            with rasterio.open(image_path) as src:
+                left, bottom, right, top = src.bounds
+            # Define boundary polygon vertices
+            coord_lists = [[(left, top), (right, top), (right, bottom), (left, bottom), (left, top)]]
+            # Add ROIs
+            self.add_roi_by_coords(
+                roi_name=f"{image_name}_{group}_bbox".replace(".", "_"),
+                coord_lists=coord_lists,
+                image_name=image_name,
+                group=group,
+                as_mask=False,
+                print_update=False,
+            )
+
+    # TODO : Auto-ROI
     # Here for API, function in new file
     # Or each untouched independent valid area in a raster image as a sample, set by 'segment' parameter.
     # self._rois_from_coords: [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs]
     # @simple_type_validator
-    # def add_rois_auto(
+    # def add_rois_by_value_mask(
     #         self,
     #         group_name: str,
     #         image_name: str,

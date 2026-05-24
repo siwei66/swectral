@@ -283,7 +283,7 @@ class SpecPipe:
         ## Private internal attributes
         self.__sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]] = (
             spec_exp.sample_targets
-        )  # noqa: E501
+        )
         self.__is_target_numeric: bool = self._check_target_numeric(spec_exp)
         self.__band_wavelength: Optional[tuple[Union[int, float], ...]] = None
         self.__pretest_data: Optional[dict[str, Any]] = None
@@ -308,14 +308,16 @@ class SpecPipe:
         self._reserve_free_pct: float = max(0.01, reserve_free_pct)
 
         # Sample target values
-        # [0 fixed sample id, 1 user assinged labels, 2 Target values]
-        # self.__sample_targets: list[tuple[str, str, Union[str, bool, int, float], str]] = spec_exp.sample_targets
+        # [0 fixed sample id, 1 user assinged labels, 2 target values, 3 sample belonging group, 4 validation group, 5 test mask, 6 train mask]  # noqa: E501
+        # self.__sample_targets: list[tuple[str, str, Union[str, bool, int, float], str, str, np.int8, np.int8]] = (
+        #     spec_exp.sample_targets
+        # )
 
         # Is_target_numeric according to sample target values
         # self.__is_target_numeric: bool = self._check_target_numeric(spec_exp)
 
         # Report directory
-        self._report_directory: str = self.spec_exp._report_directory
+        self._report_directory: str = self._spec_exp._report_directory
 
         # Processes
         # [0 Process_ID, 1 Process_label, 2 Input_data_level, 3 Output_data_level, 4 Application_sequence, 5 Method_callable, 6 _Full_app_seq, 7 _Alternative_number]  # noqa: E501
@@ -3988,7 +3990,7 @@ class SpecPipe:
         # ROI level (level ind 5)
         # ROI item format: [0 id, 1 group, 2 image_name, 3 ROI_name, 4 ROI_type, 5 list of lists of coordinate pairs]
         # Img item format: [0 id, 1 group, 2 image_name, 3 mask_of, 4 image_path]
-        # Target value item format: [0 fixed sample id, 1 user assinged labels, 2 Target values]
+        # Target value item format: [0 fixed sample id, 1 user assinged labels, 2 target values, 3 sample belonging group, 4 validation group, 5 test mask, 6 train mask]  # noqa: E501
         if (len(self.spec_exp.rois_sample) > 0) and (len(self.spec_exp.standalone_specs_sample) == 0):
             sample_data: list[dict] = []
             for roit in self.spec_exp.rois_sample:

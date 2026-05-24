@@ -18,7 +18,12 @@ import pytest
 import unittest
 
 # Data basics
+import numpy as np
 import pandas as pd
+
+# Raster operation
+import rasterio
+from rasterio.transform import from_origin
 
 # Local
 from swectral.specio import silent
@@ -44,9 +49,25 @@ def create_test_directory_structure(base_dir: str) -> tuple[str, str]:
     # Create some dummy image files
     image_files = ["image1.tif", "image2.tif", "image3.tif", "mask1.tif", "mask2.tif"]
 
+    dummy_transform = from_origin(0, 10, 1, 1)
+
     for img_file in image_files:
-        with open(os.path.join(images_dir, img_file), "w") as f:
-            f.write("dummy image content")
+        file_path = os.path.join(images_dir, img_file)
+        # Create a small 10x10 zero array
+        img_data = np.zeros((10, 10), dtype=np.uint8)
+
+        # Write out a valid TIFF using rasterio
+        with rasterio.open(
+            file_path,
+            'w',
+            driver='GTiff',
+            height=img_data.shape[0],
+            width=img_data.shape[1],
+            count=1,
+            dtype=img_data.dtype,
+            transform=dummy_transform,
+        ) as dst:
+            dst.write(img_data, 1)
 
     # Create some dummy ROI files (simplified versions)
     roi_files = ["image1_rois.xml", "image2_rois.xml", "image1_mask.shp"]
@@ -526,6 +547,33 @@ class TestSpecExp(unittest.TestCase):
             print_result=False,
         )
         assert len(rois) == 1
+
+    # TODO: test add ROIs from bbox
+    @staticmethod
+    @silent
+    def test_add_rois_from_bbox() -> None:
+        spec_exp = TestSpecExp.spec_exp_init()
+
+        spec_exp.add_groups(["test_group"])
+        spec_exp.add_images_by_name(
+            group="test_group",
+            image_name="image*.tif",
+            image_directory=TestSpecExp.images_dir,
+        )
+
+        spec_exp.add_rois_from_bbox()
+
+        rois = spec_exp._rois_from_coords
+
+        images = spec_exp.ls_images(return_dataframe=True, print_result=False)
+        assert len(rois) == len(images)
+        assert len(rois) > 0
+        # Assert generated ROI names
+        for roi in rois:
+            img_name = roi[2]
+            group_name = roi[1]
+            expected_roi_name = f"{img_name}_{group_name}_bbox".replace(".", "_")
+            assert roi[3] == expected_roi_name
 
     @staticmethod
     @silent
