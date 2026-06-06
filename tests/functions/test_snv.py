@@ -72,7 +72,7 @@ class TestSNV(unittest.TestCase):
 
     @staticmethod
     def test_snv() -> None:
-        """Test snv basic functionality."""
+        """Test snv basic functionality with pixel_apply."""
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
             pixel_apply(
@@ -87,7 +87,7 @@ class TestSNV(unittest.TestCase):
 
     @staticmethod
     def test_snv_hyper() -> None:
-        """Test snv_hyper basic functionality."""
+        """Test snv_hyper basic functionality with pixel_apply."""
         if HAS_CUDA:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
@@ -108,6 +108,96 @@ class TestSNV(unittest.TestCase):
                     )
         else:
             return
+
+    @staticmethod
+    def test_snv_tensor_dimensions() -> None:
+        """Test snv with 1D, 2D, 3D, and 4D PyTorch tensors."""
+        try:
+            import torch
+        except ImportError:
+            return
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+
+            # 1D: (C,) - Spectral dim is 0
+            t1 = torch.rand(10)
+            res1 = snv(t1)
+            assert res1.shape == (10,)
+
+            # 2D: (N, C) - Spectral dim is 1
+            t2 = torch.rand(5, 10)
+            res2 = snv(t2)
+            assert res2.shape == (5, 10)
+
+            # 3D: (C, H, W) - Spectral dim is 0
+            t3 = torch.rand(10, 4, 4)
+            res3 = snv(t3)
+            assert res3.shape == (10, 4, 4)
+
+            # 4D: (N, C, H, W) - Spectral dim is 1
+            t4 = torch.rand(5, 10, 4, 4)
+            res4 = snv(t4)
+            assert res4.shape == (5, 10, 4, 4)
+
+            # Verify computation logic (mean ~0, std ~1) on a specific dimension
+            # For 3D, operations run on dim=0
+            assert torch.allclose(res3.nanmean(dim=0), torch.zeros(4, 4), atol=1e-5)
+            # Use unbiased=False since SNV typically uses population standard deviation
+            assert torch.allclose(torch.sqrt(torch.nanmean(res3**2, dim=0)), torch.ones(4, 4), atol=1e-5)
+
+            # For 4D, operations run on dim=1
+            assert torch.allclose(res4.nanmean(dim=1), torch.zeros(5, 4, 4), atol=1e-5)
+            assert torch.allclose(torch.sqrt(torch.nanmean(res4**2, dim=1)), torch.ones(5, 4, 4), atol=1e-5)
+
+    @staticmethod
+    def test_snv_tensor_edge_cases() -> None:
+        """Test snv tensor functionality with edge cases like NaNs and zero variance."""
+        try:
+            import torch
+        except ImportError:
+            return
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+
+            # NaN handling
+            t_nan = torch.tensor([[1.0, float("nan"), 3.0], [2.0, 2.0, 2.0]])
+            res_nan = snv(t_nan)
+
+            # Ensure the computation gracefully handles NaNs without turning valid pixels into NaNs
+            assert not torch.isnan(res_nan[0, 0])
+            assert not torch.isnan(res_nan[0, 2])
+            assert torch.isnan(res_nan[0, 1])
+
+            # Zero variance (all elements identical along the spectral dimension)
+            t_zero_var = torch.ones(2, 5)
+            res_zero = snv(t_zero_var)
+
+            # Should not contain NaNs due to the 1e-15 epsilon addition
+            assert not torch.isnan(res_zero).any()
+            # The resulting tensor should be approximately zero
+            assert torch.allclose(res_zero, torch.zeros_like(res_zero), atol=1e-5)
+
+    @staticmethod
+    def test_snv_tensor_errors() -> None:
+        """Test snv tensor error raises for unsupported dimensions."""
+        try:
+            import torch
+        except ImportError:
+            return
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+
+            # 5D tensor is unsupported and should raise a ValueError
+            t5 = torch.rand(2, 3, 4, 5, 6)
+
+            with pytest.raises(ValueError, match="got dimension"):
+                snv(t5)
 
 
 # %% Test main

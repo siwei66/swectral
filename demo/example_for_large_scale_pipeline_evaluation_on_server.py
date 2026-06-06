@@ -212,7 +212,7 @@ if __name__ == '__main__':
     pipe = SpecPipe(exp)
 
     # Build pipelines
-    pipe.build_pipeline(
+    pipe.compose_pipeline(
         [
             # 1 ROI spectrum extraction (Apply first to reduce computation)
             ((5, 6), roispec),

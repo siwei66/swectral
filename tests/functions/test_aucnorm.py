@@ -109,6 +109,97 @@ class TestAUCNorm(unittest.TestCase):
         else:
             return
 
+    @staticmethod
+    def test_aucnorm_tensor_dimensions() -> None:
+        """Test aucnorm with 1D, 2D, 3D, and 4D PyTorch tensors."""
+        try:
+            import torch
+        except ImportError:
+            return
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+
+            # 1D: (C,) - Spectral dim is 0
+            t1 = torch.rand(10)
+            res1 = aucnorm(t1)
+            assert res1.shape == (10,)
+
+            # 2D: (N, C) - Spectral dim is 1
+            t2 = torch.rand(5, 10)
+            res2 = aucnorm(t2)
+            assert res2.shape == (5, 10)
+
+            # 3D: (C, H, W) - Spectral dim is 0
+            t3 = torch.rand(10, 4, 4)
+            res3 = aucnorm(t3)
+            assert res3.shape == (10, 4, 4)
+
+            # 4D: (N, C, H, W) - Spectral dim is 1
+            t4 = torch.rand(5, 10, 4, 4)
+            res4 = aucnorm(t4)
+            assert res4.shape == (5, 10, 4, 4)
+
+            # Verify computation logic (sum of absolute values along spectral dim should be ~1)
+            # For 3D, operations run on dim=0
+            assert torch.allclose(torch.nansum(torch.abs(res3), dim=0), torch.ones(4, 4), atol=1e-5)
+
+            # For 4D, operations run on dim=1
+            assert torch.allclose(torch.nansum(torch.abs(res4), dim=1), torch.ones(5, 4, 4), atol=1e-5)
+
+    @staticmethod
+    def test_aucnorm_tensor_edge_cases() -> None:
+        """Test aucnorm tensor functionality with edge cases like NaNs and zero inputs."""
+        try:
+            import torch
+        except ImportError:
+            return
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+
+            # NaN handling
+            t_nan = torch.tensor([[1.0, float("nan"), 3.0], [2.0, 2.0, 2.0]])
+            res_nan = aucnorm(t_nan)
+
+            # Ensure the computation gracefully handles NaNs without breaking valid elements
+            assert not torch.isnan(res_nan[0, 0])
+            assert not torch.isnan(res_nan[0, 2])
+            assert torch.isnan(res_nan[0, 1])
+
+            # Area calculation should ignore NaN: |1.0| + |3.0| = 4.0 -> 1/4 and 3/4
+            assert torch.allclose(res_nan[0, 0], torch.tensor(0.25), atol=1e-5)
+            assert torch.allclose(res_nan[0, 2], torch.tensor(0.75), atol=1e-5)
+
+            # Zero handling (all elements are zero along the spectral dimension)
+            t_zero = torch.zeros(2, 5)
+            res_zero = aucnorm(t_zero)
+
+            # Should not contain NaNs due to the 1e-15 epsilon addition
+            assert not torch.isnan(res_zero).any()
+            # The resulting tensor should remain zero
+            assert torch.allclose(res_zero, torch.zeros_like(res_zero), atol=1e-5)
+
+    @staticmethod
+    def test_aucnorm_tensor_errors() -> None:
+        """Test aucnorm tensor error raises for unsupported dimensions."""
+        try:
+            import torch
+        except ImportError:
+            return
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+
+            # 5D tensor is unsupported and should raise a ValueError
+            t5 = torch.rand(2, 3, 4, 5, 6)
+
+            with pytest.raises(ValueError, match="got dimension"):
+                aucnorm(t5)
+
 
 # %% Test main
 

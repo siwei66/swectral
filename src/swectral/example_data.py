@@ -9,12 +9,13 @@ Copyright (c) 2025 Siwei Luo. MIT License.
 
 # OS
 import os
+import warnings
 
 # Time
 import time
 
 # Typing
-from typing import Optional, Union
+from typing import Optional, Union, Any
 
 # Basic data processing
 import numpy as np
@@ -22,6 +23,8 @@ import pandas as pd
 
 # Rasters
 import rasterio
+from rasterio.crs import CRS
+from rasterio.transform import from_origin
 
 # Local
 from .specexp import SpecExp
@@ -156,6 +159,22 @@ def create_test_raster(
     # Define transform (georeferencing)
     transform = rasterio.transform.from_bounds(0, 0, width, height, width=width, height=height)
 
+    # CRS for direct coordinate mapping to avoid NotGeoreferencedWarning
+    crs = CRS.from_wkt(
+        """
+    ENGCRS["Pixel Space",
+        EDATUM["Unknown engineering datum"],
+        CS[Cartesian,2],
+            AXIS["x",east,
+                ORDER[1],
+                LENGTHUNIT["unity",1]],
+            AXIS["y",north,
+                ORDER[2],
+                LENGTHUNIT["unity",1]]
+    ]
+    """
+    )
+
     # Create metadata
     meta = {
         "driver": "GTiff",
@@ -164,7 +183,7 @@ def create_test_raster(
         "width": width,
         "height": height,
         "count": bands,
-        "crs": None,
+        "crs": crs,
         "transform": transform,
     }
 
@@ -543,3 +562,194 @@ def download_demo_data(
                 https://github.com/siwei66/swectral/tree/master/demo/demo_data/"
         )
     return None
+
+
+# %% Create shaped rasters for SpecPipeTensor pipelines
+
+
+@simple_type_validator
+def create_test_raster_shaped(  # noqa: C901
+    out_dir: str,
+    n_samples: int = 20,
+    width: int = 20,
+    height: int = 20,
+    n_bands: int = 4,
+    task_type: str = "classification",
+    n_classes: int = 2,
+    nodata: Union[int, float, None] = None,
+    nodata_cov: float = 0.0,
+    dtype: str = "uint16",
+) -> list[str]:
+    """
+    Generate mock hyperspectral raster images where a spatial shape acts as the image signal.
+
+    This function generates synthetic raster datasets suitable for testing spatial-spectral machine learning pipelines.
+    The average spectral signature of the images remains similar and indistinguishable.
+    Instead, the task target is encoded in the spatial location of a localized 2D Gaussian point.
+
+    For classification, the point stochasticly jitters around fixed coordinates corresponding to specific classes.
+    For regression, the point moves continuously across the image extent with added location noise.
+    Random Gaussian noise is applied globally to simulate sensor variations.
+
+    Parameters
+    ----------
+    out_dir : str
+        The base directory where the generated images will be saved.
+    n_samples : int, optional
+        The total number of sample images to generate. Default is 20.
+    width : int, optional
+        The width of the generated raster images in pixels. Default is 20.
+    height : int, optional
+        The height of the generated raster images in pixels. Default is 20.
+    n_bands : int, optional
+        The number of spectral bands (channels) for each image. Default is 4.
+    task_type : str, optional
+        The machine learning task type. Must be either "classification" or "regression".
+        Default is "classification".
+    n_classes : int, optional
+        The number of distinct classes to generate (only applicable if task_type is "classification").
+        Default is 2.
+    nodata : int, float, or None, optional
+        The specific value to be assigned to no-data pixels.
+        If None, no-data masking is skipped regardless of `nodata_cov`.
+        Default is None.
+    nodata_cov : float, optional
+        The coverage percentage of no-data pixels per image, expressed as a float between 0.0 and 1.0. Default is 0.0.
+    dtype : str, optional
+        The NumPy/Rasterio data type string for the output images (e.g., "uint16", "float32").
+        Default is "uint16".
+
+    Returns
+    -------
+    list of str
+        A list of absolute file paths to the generated raster images.
+
+    Raises
+    ------
+    ValueError
+        If the `out_dir` does not exist, if `task_type` is invalid, or if the dimensions are too small to support the moving point requirement.
+    """  # noqa: E501
+
+    # 1. Validate output directory and dimensions
+    if not os.path.isdir(out_dir):
+        raise ValueError(f"The provided output directory path is invalid or does not exist: {out_dir}")
+
+    if min(width, height) < 10:
+        raise ValueError("Image dimensions must be at least 10x10 to fit the spatial Gaussian point.")
+
+    target_dir = os.path.join(out_dir, "mock_rasters")
+    os.makedirs(target_dir, exist_ok=True)
+
+    task_type = task_type.lower()
+    if task_type not in ("classification", "regression"):
+        raise ValueError("task_type must be either 'classification' or 'regression'.")
+
+    # 2. Define geometry for the 2D Gaussian point
+    # Point size is set so its visible diameter (~4*sigma) is strictly < 0.5 * extent
+    sigma = min(width, height) / 10.0
+    padding = 3.0 * sigma  # Ensures the point is entirely present without edge clipping
+
+    # 3. Generate target labels (y) and define spatial centers
+    if task_type == "classification":
+        if n_samples < n_classes * 3:
+            warnings.warn(
+                f"Number of samples ({n_samples}) is less than 3 times the number of classes ({n_classes}). "
+                "This may lead to insufficient data for standard train/test/validation splits.",
+                stacklevel=2,
+            )
+        samples_per_class = int(np.ceil(n_samples / n_classes))
+        y_values = np.repeat(np.arange(n_classes), samples_per_class)[:n_samples]
+
+        # Pre-calculate fixed centers for each class using a fixed seed for reproducibility
+        rng = np.random.RandomState(42)
+        class_centers: list[tuple[float, float]] = []
+        for _ in range(n_classes):
+            class_cy = rng.uniform(padding, height - padding)
+            class_cx = rng.uniform(padding, width - padding)
+            class_centers.append((class_cy, class_cx))
+    else:
+        y_values = np.linspace(1.0, 10.0, n_samples)
+        min_y, max_y = 1.0, 10.0
+
+    np_dtype = np.dtype(dtype)
+    file_paths: list[str] = []
+    bands_x = np.linspace(0, n_bands - 1, n_bands)
+
+    # A fixed spectral signature for the 2D Gaussian point to keep the average spectrum identical
+    point_spectrum = np.exp(-((bands_x - n_bands / 2.0) ** 2) / ((n_bands / 4.0) ** 2)) * 5000.0
+
+    transform = from_origin(0.0, 0.0, 1.0, 1.0)
+    Y, X = np.ogrid[:height, :width]  # noqa: N806
+
+    # 4. Generate images iteratively
+    for i, y_val in enumerate(y_values):
+        # Determine the base coordinate based on task_type
+        if task_type == "classification":
+            base_cy, base_cx = class_centers[int(y_val)]
+            label_str = str(int(y_val))
+        else:
+            # Continuous trajectory from top-left to bottom-right bounds
+            t = (y_val - min_y) / (max_y - min_y) if max_y > min_y else 0.5
+            base_cy = padding + t * (height - 2.0 * padding)
+            base_cx = padding + t * (width - 2.0 * padding)
+            label_str = f"{y_val:.2f}".replace(".", "_")
+
+        # Add stochastic location noise
+        cy = base_cy + np.random.normal(0, sigma / 3.0)
+        cx = base_cx + np.random.normal(0, sigma / 3.0)
+
+        # Strictly clip to ensure the entire point is present and uncropped
+        cy = np.clip(cy, padding, height - padding)
+        cx = np.clip(cx, padding, width - padding)
+
+        # Create the spatial Gaussian blob
+        spatial_blob = np.exp(-((X - cx) ** 2 + (Y - cy) ** 2) / (2.0 * sigma**2))
+
+        # Integrate spatial blob with fixed spectral signature over a noisy base background
+        img = np.full((n_bands, height, width), 1000.0)
+        for b in range(n_bands):
+            img[b, :, :] += point_spectrum[b] * spatial_blob
+
+        img += np.random.normal(loc=0.0, scale=200.0, size=(n_bands, height, width))
+
+        # Safely clip and cast to target dtype
+        if np.issubdtype(np_dtype, np.integer):
+            dinfo = np.iinfo(np_dtype)
+            img = np.clip(img, dinfo.min, dinfo.max)
+        img = img.astype(np_dtype)
+
+        # Apply NoData masking
+        if nodata_cov > 0.0 and nodata is not None:
+            n_pixels = width * height
+            n_nodata = int(n_pixels * nodata_cov)
+            if n_nodata > 0:
+                flat_indices = np.random.choice(n_pixels, n_nodata, replace=False)
+                row_idx, col_idx = np.unravel_index(flat_indices, (height, width))
+                img[:, row_idx, col_idx] = nodata
+
+        # Write to disk
+        filename = f"sample_{i}_y_{label_str}.tif"
+        out_path = os.path.join(target_dir, filename)
+
+        profile: dict[str, Any] = {
+            "driver": "GTiff",
+            "height": height,
+            "width": width,
+            "count": n_bands,
+            "dtype": str(dtype),
+            "transform": transform,
+        }
+
+        if nodata is not None:
+            profile["nodata"] = nodata
+
+        with rasterio.open(out_path, "w", **profile) as dst:
+            dst.write(img)
+
+        file_paths.append(os.path.abspath(out_path))
+
+    return file_paths
+
+
+# Alias
+create_example_raster_shaped = create_test_raster_shaped

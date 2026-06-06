@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Swectral - Basic usage example for SpecPipe - Mock data version, No data downloading needed
+Swectral - Basic usage example for SpecPipe using mock data. No data downloading required.
 
 Copyright (c) 2025 Siwei Luo. MIT License.
 """

@@ -242,7 +242,7 @@ pipe.ls_chains()
 pipe1 = SpecPipe(exp)
 
 # Compose pipelines (Compose the same pipelines as above in a single call)
-pipe1.build_pipeline(
+pipe1.compose_pipeline(
     [
         # 1 Image-wide baseline correction
         ((2, 2), [raw, snv]),

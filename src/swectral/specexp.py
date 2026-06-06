@@ -194,6 +194,9 @@ class SpecExp:
     add_roi_by_coords
         Add a (multi-)polygon ROI from vertex coordinates.
 
+    add_rois_from_bbox
+        Add ROIs from bounding-box coordinates of added sample images.
+
     ls_rois
         List added ROIs filtered by roi_name, group_name, image name, or source ROI file.
 
@@ -1864,7 +1867,9 @@ class SpecExp:
     # Generate multipolygon ROIs of bbox of the images
     def add_rois_from_bbox(self) -> None:
         """
-        Converts added sample images into bounding-box ROIs and updates ``rois_from_coords``.
+        Adds ROIs from bounding-box coordinates of added sample images and updates ``rois_from_coords``.
+
+        The associated group for each ROI is automatically specified as the group of its corresponding image.
         """
         # Extract coordinates and add ROIs
         for img in self.images:

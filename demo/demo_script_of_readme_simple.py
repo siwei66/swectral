@@ -148,7 +148,7 @@ models = factorial_model_chains(
 
 # 3.5 Compose pipelines
 
-pipe.build_pipeline(
+pipe.compose_pipeline(
     [
         # 1 Image-wide baseline correction
         ((2, 2), [raw, snv]),

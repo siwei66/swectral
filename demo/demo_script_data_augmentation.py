@@ -168,7 +168,7 @@ models = factorial_model_chains(
 )
 
 # Build pipelines
-pipe.build_pipeline(
+pipe.compose_pipeline(
     [
         # 1 Baseline correction
         ((2, 2), [raw, snv]),

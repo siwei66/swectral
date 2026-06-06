@@ -699,8 +699,8 @@ class TestSpecPipe(unittest.TestCase):
 
     @staticmethod
     @silent
-    def test_build_pipeline() -> None:
-        """Test build_pipeline functionality."""
+    def test_compose_pipeline() -> None:
+        """Test compose_pipeline functionality."""
         TestSpecPipe._init_test_dir()
         test_dir = TestSpecPipe.test_dir
 
@@ -737,10 +737,10 @@ class TestSpecPipe(unittest.TestCase):
         assert pipe2.ls_process(return_result=True).equals(pipe1.ls_process(return_result=True))
         assert pipe2.ls_chains().equals(pipe1.ls_chains())
 
-        # Create SpecPipe by build_pipeline
+        # Create SpecPipe by compose_pipeline
         pipe3 = SpecPipe(test_exp)
         # Add processes
-        pipe3.build_pipeline(
+        pipe3.compose_pipeline(
             [
                 ((0, 0), original_img),
                 ((2, 2), [arr_ori, arr_simple_half]),
@@ -752,10 +752,10 @@ class TestSpecPipe(unittest.TestCase):
         assert pipe3.ls_process(return_result=True).equals(pipe1.ls_process(return_result=True))
         assert pipe3.ls_chains().equals(pipe1.ls_chains())
 
-        # Test additional params of build_pipeline
+        # Test additional params of compose_pipeline
         pipe4 = SpecPipe(test_exp)
         # Add processes
-        pipe4.build_pipeline(
+        pipe4.compose_pipeline(
             [
                 ((0, 0), original_img),
                 ((2, 2), [arr_ori, arr_simple_half]),
@@ -2051,7 +2051,7 @@ class TestSpecPipe(unittest.TestCase):
 # TestSpecPipe.test_ls_model()
 # TestSpecPipe.test_rm_model()
 
-# TestSpecPipe.test_build_pipeline()
+# TestSpecPipe.test_compose_pipeline()
 
 # TestSpecPipe.test_process_chains_to_df()
 # TestSpecPipe.test_custom_chains_from_df()

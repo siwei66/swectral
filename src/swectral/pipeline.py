@@ -2451,7 +2451,7 @@ class SpecPipe:
 
     # Build pipelines directly from structure ==========================================================================
     @simple_type_validator
-    def build_pipeline(
+    def compose_pipeline(
         self,
         step_methods: list[
             Union[
@@ -2468,7 +2468,7 @@ class SpecPipe:
         ],
     ) -> None:
         """
-        Build pipelines by given structure and methods of each step.
+        Compose pipelines by given structure and methods of each step.
 
         This method constructs one or more processing pipelines directly from an explicit structural description.
         Each pipeline step is defined by its input/output data levels with one or more alternative callable(s) or objects responsible for processing at that step.
@@ -2506,7 +2506,7 @@ class SpecPipe:
             >>> from swectral import roi_mean
             >>> from swectral.functions import snv, minmax, aucnorm
 
-            >>> pipe.build_pipeline(
+            >>> pipe.compose_pipeline(
             ...     [
             ...         ((2, 2), [snv, minmax, aucnorm]),
             ...         ((5, 7), roi_mean),
@@ -3632,7 +3632,7 @@ class SpecPipe:
         See Also
         --------
         add_process
-        build_pipeline
+        compose_pipeline
         assembly
         model_evaluation
         run
@@ -4081,7 +4081,7 @@ class SpecPipe:
         See Also
         --------
         add_process
-        build_pipeline
+        compose_pipeline
         preprocessing
         model_evaluation
         run
@@ -4318,7 +4318,7 @@ class SpecPipe:
         --------
         add_process
         add_model
-        build_pipeline
+        compose_pipeline
         preprocessing
         assembly
         run

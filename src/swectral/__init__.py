@@ -15,6 +15,7 @@ __all__ = [
     ### Core modules
     "SpecExp",
     "SpecPipe",
+    "SpecPipeTensor",
     "raster_rgb_preview",
     ### Model combiners
     "combine_classifier",
@@ -53,6 +54,7 @@ __all__ = [
     "roi_to_shp",
     ## Example data
     "create_example_raster",
+    "create_example_raster_shaped",
     "create_example_roi_xml",
     "create_example_spec_exp",
     "download_demo_data",
@@ -65,7 +67,13 @@ __all__ = [
 # Components
 ## Core pipeline tools
 ## Example data
-from .example_data import create_example_raster, create_example_roi_xml, create_example_spec_exp, download_demo_data
+from .example_data import (
+    create_example_raster,
+    create_example_raster_shaped,
+    create_example_roi_xml,
+    create_example_spec_exp,
+    download_demo_data,
+)
 
 ## Model combiners
 from .modelconnector import (
@@ -116,6 +124,7 @@ from .specio import (
 
 ## SpecPipe main pipeline
 from .pipeline import SpecPipe
+from .pipeline_tensor import SpecPipeTensor
 
 ## Submodules
 from . import denoiser
