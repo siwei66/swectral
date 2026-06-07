@@ -5,8 +5,12 @@ on:
     branches:
       - master
     tags:
-      - 'v*' # Triggers when release a new version tag
-  workflow_dispatch: # For manual trigger
+      - 'v*'
+  workflow_dispatch:
+
+# Opt into Node.js 24 to resolve the deprecation warning
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
 
 permissions:
   contents: read
@@ -21,7 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches all history, tags, and branches for sphinx-multiversion
+          fetch-depth: 0 
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,13 +42,13 @@ jobs:
       - name: Build Multi-Version Sphinx documentation
         run: |
           cd docs
-          sphinx-multiversion . build/html
+          sphinx-multiversion source build/html
 
       - name: Copy root redirect file
         run: |
           cp docs/index.html docs/build/html/
 
-      - name: Check links in documentation   # before upload/deploy
+      - name: Check links in documentation
         run: |
           cd docs
           make linkcheck SPHINXOPTS=-W
