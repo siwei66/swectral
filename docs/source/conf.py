@@ -135,7 +135,7 @@ intersphinx_mapping = {
 smv_branch_whitelist = r'^master$'
 
 # Whitelist which tags to build (matches tags like v1.0.0, v0.6.5)
-smv_tag_whitelist = r'^v\d+\.\d+\.\d+$'
+smv_tag_whitelist = r'^v([0-9]|[1-9]\d+)\.(4|[5-9]|\d{2,})\.\d+$|^v[1-9]\d*\.\d+\.\d+$'
 
 # Whitelist which remote to use
 smv_remote_whitelist = r'^origin$'
