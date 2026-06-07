@@ -715,7 +715,7 @@ def create_test_raster_shaped(  # noqa: C901
         # Safely clip and cast to target dtype
         if np.issubdtype(np_dtype, np.integer):
             dinfo = np.iinfo(np_dtype)
-            img = np.clip(img, dinfo.min, dinfo.max)
+            img: np.ndarray = np.clip(img, dinfo.min, dinfo.max)
         img = img.astype(np_dtype)
 
         # Apply NoData masking
