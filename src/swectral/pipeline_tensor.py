@@ -545,6 +545,7 @@ class SpecPipeTensor:
         application_sequence: int,
         method: Union[Callable, nn.Module, list[Callable], tuple[Callable], list[nn.Module], tuple[nn.Module]],
         process_label: Union[str, list[str], tuple[str]] = "",
+        # factor_list: Optional[list[str]] = None,
         *,
         test_error_raise: bool = True,
         # Fittable training parameters

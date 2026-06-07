@@ -658,7 +658,7 @@ def create_test_raster_shaped(  # noqa: C901
                 stacklevel=2,
             )
         samples_per_class = int(np.ceil(n_samples / n_classes))
-        y_values = np.repeat(np.arange(n_classes), samples_per_class)[:n_samples]
+        y_values: np.ndarray = np.repeat(np.arange(n_classes), samples_per_class)[:n_samples]
 
         # Pre-calculate fixed centers for each class using a fixed seed for reproducibility
         rng = np.random.RandomState(42)
@@ -671,7 +671,7 @@ def create_test_raster_shaped(  # noqa: C901
         y_values = np.linspace(1.0, 10.0, n_samples)
         min_y, max_y = 1.0, 10.0
 
-    np_dtype = np.dtype(dtype)
+    np_dtype: np.dtype = np.dtype(dtype)
     file_paths: list[str] = []
     bands_x = np.linspace(0, n_bands - 1, n_bands)
 
