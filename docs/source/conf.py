@@ -107,7 +107,6 @@ html_theme_options = {
     "show_nav_level": 2,
     "navigation_depth": 4,
     "collapse_navigation": True,
-    "primary_sidebar_end": ["versioning.html"],
 }
 
 html_static_path = ['_static']

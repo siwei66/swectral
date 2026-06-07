@@ -1,34 +1,103 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Redirecting to Latest Documentation</title>
+<html lang="en" data-theme="light">
+<head>
+    <title>Redirecting to Latest Documentation...</title>
     <meta charset="utf-8">
-    <script>
-      async function redirectToLatest() {
-        // Fallback version in case the network request fails
-        const fallbackVersion = "master"; 
-        const repoName = "swectral"; // Your repository name
-        const githubUser = "siwei66"; // Your GitHub username
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="./v0.6.5/_static/favicon.ico" type="image/x-icon">
 
-        try {
-          // Fetch releases
-          const response = await fetch(`https://api.github.com/repos/${githubUser}/${repoName}/releases/latest`);
-          if (!response.ok) throw new Error();
-          
-          const data = await response.json();
-          const latestTag = data.tag_name; // e.g., "v0.6.5"
-          
-          // Redirect to the latest stable release folder
-          window.location.replace(`${latestTag}/index.html`);
-        } catch (error) {
-          // If no release is found or API limits hit, fall back to master
-          window.location.replace(`${fallbackVersion}/index.html`);
+    <style>
+        :root {
+            --pst-color-background: #ffffff;
+            --pst-color-text-base: #111111;
+            --pst-color-primary: #1976d2;
+            --pst-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
         }
-      }
-      redirectToLatest();
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --pst-color-background: #111213;
+                --pst-color-text-base: #e1e4e6;
+                --pst-color-primary: #30a2ff;
+            }
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--pst-color-background);
+            color: var(--pst-color-text-base);
+            font-family: var(--pst-font-family);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 400px;
+            padding: 2rem;
+        }
+
+        .brand-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .status-text {
+            font-size: 0.95rem;
+            opacity: 0.75;
+            margin-bottom: 2rem;
+        }
+
+        /* Subtle modern theme spinner matching the pydata style */
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--pst-color-text-base);
+            border-top-color: var(--pst-color-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+
+    <script>
+        async function redirectToLatest() {
+            // Secure baseline fallback version
+            const fallbackVersion = "v0.6.5";
+            try {
+                // Fetch the switcher data generated automatically by sphinx-multiversion
+                const response = await fetch('./_static/switcher.json');
+                if (!response.ok) throw new Error();
+                const data = await response.json();
+                // Filter out 'master' so standard users never land on the development branch
+                const releases = data.filter(item => item.version !== "master");
+                // Grab the absolute newest release folder name (the top array element)
+                const latestVersion = releases.length > 0 ? releases[0].version : "master";
+                window.location.replace(`${latestVersion}/index.html`);
+            } catch (error) {
+                // Ultimate fallback to master branch if a local file path structural issue happens
+                window.location.replace(`${fallbackVersion}/index.html`);
+            }
+        }
+        redirectToLatest();
     </script>
-  </head>
-  <body>
-    <p>Redirecting to latest documentation...</p>
-  </body>
+</head>
+
+<body>
+    <div class="container">
+        <div class="brand-title">Swectral</div>
+        <div class="status-text">Redirecting to latest documentation...</div>
+        <div class="spinner" role="status"></div>
+    </div>
+</body>
 </html>

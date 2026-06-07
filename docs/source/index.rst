@@ -11,6 +11,6 @@ Swectral Documentation
    :caption: Contents
 
    installation
-   usage
+   tutorial
    api/index
    contributing

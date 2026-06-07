@@ -26,7 +26,7 @@ Swectral streamlines the batch testing and optimization of plant hyperspectral a
 ## Table of Contents
 
 - [Installation](#installation)
-- [Usage](#usage)
+- [Tutorial](#tutorial)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -59,7 +59,7 @@ Follow these steps to install the project:
     ```
 
 
-## Usage <a name="usage"></a>
+## Tutorial <a name="tutorial"></a>
 
 ### 1.  Data preparation
 
