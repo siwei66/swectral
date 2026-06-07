@@ -105,6 +105,7 @@ html_theme_options = {
     "show_nav_level": 2,
     "navigation_depth": 4,
     "collapse_navigation": True,
+    "primary_sidebar_end": ["versioning.html"],
 }
 
 html_static_path = ['_static']
@@ -127,3 +128,14 @@ intersphinx_mapping = {
     "torch": ("https://pytorch.org/docs/stable/", None),
     "PyWavelets": ("https://pywavelets.readthedocs.io/en/latest/", None),
 }
+
+# -- Options for sphinx-multiversion ---------------------------------------
+
+# Whitelist which branches to build (only master)
+smv_branch_whitelist = r'^master$'
+
+# Whitelist which tags to build (matches tags like v1.0.0, v0.6.5)
+smv_tag_whitelist = r'^v\d+\.\d+\.\d+$'
+
+# Whitelist which remote to use
+smv_remote_whitelist = r'^origin$'
