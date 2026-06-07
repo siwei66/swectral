@@ -109,6 +109,13 @@ html_theme_options = {
     "collapse_navigation": True,
 }
 
+# Remove primary (left) sidebars of the page
+html_sidebars = {
+    "installation": [],
+    "tutorial": [],
+    "contributing": [],
+}
+
 html_static_path = ['_static']
 html_css_files = [
     "index.css",
