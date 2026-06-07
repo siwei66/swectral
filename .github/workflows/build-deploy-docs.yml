@@ -39,19 +39,26 @@ jobs:
           pip install .[docs]
           pip install sphinx-multiversion
 
+      - name: Check links in documentation
+        run: |
+          cd docs
+          make linkcheck  # SPHINXOPTS=-W
+
       - name: Build Multi-Version Sphinx documentation
         run: |
           cd docs
           sphinx-multiversion source build/html
 
+      - name: Inject Global Version Switcher Script
+        run: |
+          # Copy the global version switcher script to the root deployment directory
+          cp docs/version_switcher.js docs/build/html/
+          # Find every HTML file across ALL compiled historical folders and inject the script reference right before the closing body tag
+          find docs/build/html -name "*.html" -type f | xargs sed -i 's|</body>|<script src="/swectral/version_switcher.js"></script></body>|g'
+
       - name: Copy root redirect file
         run: |
           cp docs/index.html docs/build/html/
-
-      - name: Check links in documentation
-        run: |
-          cd docs
-          make linkcheck  # SPHINXOPTS=-W
 
       - name: Upload documentation artifact
         uses: actions/upload-pages-artifact@v3
