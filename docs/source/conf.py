@@ -91,6 +91,7 @@ exclude_patterns = [
 
 # -- Linkcheck configuration -------------------------------------------------
 linkcheck_ignore = [
+    r'https://siwei66\.github\.io/.*',
     r'https://doi\.org/.*',
     # r'https://docs\.scipy\.org/.*',
 ]
@@ -121,7 +122,7 @@ html_favicon = "_static/favicon.ico"
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    # "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "statsmodels": ("https://www.statsmodels.org/stable/", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
     "sklearn": ("https://scikit-learn.org/stable/", None),

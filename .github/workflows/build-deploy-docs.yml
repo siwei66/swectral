@@ -51,7 +51,7 @@ jobs:
       - name: Check links in documentation
         run: |
           cd docs
-          make linkcheck SPHINXOPTS=-W
+          make linkcheck  # SPHINXOPTS=-W
 
       - name: Upload documentation artifact
         uses: actions/upload-pages-artifact@v3

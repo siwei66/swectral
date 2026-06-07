@@ -33,9 +33,9 @@ Swectral streamlines the batch testing and optimization of plant hyperspectral a
 
 ## Documentation
 
-- [User Guide](https://siwei66.github.io/swectral/index.html)
-- [API Reference](https://siwei66.github.io/swectral/api/index.html)
-- [Examples](https://siwei66.github.io/swectral/usage.html#tutorials-demos)
+- [User Guide](https://siwei66.github.io/swectral/)
+- [API Reference](https://siwei66.github.io/swectral/)
+- [Examples](https://siwei66.github.io/swectral/)
 
 
 ## Installation <a name="installation"></a>
