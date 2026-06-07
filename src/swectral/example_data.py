@@ -706,7 +706,7 @@ def create_test_raster_shaped(  # noqa: C901
         spatial_blob = np.exp(-((X - cx) ** 2 + (Y - cy) ** 2) / (2.0 * sigma**2))
 
         # Integrate spatial blob with fixed spectral signature over a noisy base background
-        img = np.full((n_bands, height, width), 1000.0)
+        img: np.ndarray = np.full((n_bands, height, width), 1000.0)
         for b in range(n_bands):
             img[b, :, :] += point_spectrum[b] * spatial_blob
 
@@ -715,7 +715,7 @@ def create_test_raster_shaped(  # noqa: C901
         # Safely clip and cast to target dtype
         if np.issubdtype(np_dtype, np.integer):
             dinfo = np.iinfo(np_dtype)
-            img: np.ndarray = np.clip(img, dinfo.min, dinfo.max)
+            img = np.clip(img, dinfo.min, dinfo.max)
         img = img.astype(np_dtype)
 
         # Apply NoData masking
