@@ -11,16 +11,19 @@
 
 ## A Python framework for automated batch composition, implementation and method assessment of plant hyperspectral modeling pipelines.
 
-<!-- start-doc -->
+<!-- start-overview -->
 Swectral streamlines the batch testing and optimization of plant hyperspectral analysis workflows. It provides a structured and extensible framework to apply and assess various image processing techniques (calibration, baseline correction, denoising, feature engineering, etc.) in combination with various machine learning models. The framework employs a comprehensive full-factorial design to evaluate all method combinations on user spectral dataset and generates standard reports on performance metrics, comparative statistical tests, residual analysis, influence anlaysis and visualizations.
+<!-- end-overview -->
 
 
 ## Core features
+
+<!-- start-features -->
 - **Batch processing**: Automate numerous data processing and modeling workflows in a single batch operation.
 - **File-based**: A resumable, file-based processing pipeline with full-scale auditability and break tolerance.
 - **High-performance**: Optimized for hyperspectral images with minimal memory consumption and options of GPU acceleration and pipeline-level multiprocessing.
 - **Simple extensible integration**: Intuitive data management and straightforward integration for custom processing functions and Scikit-learn-style models.
-<!-- end-doc -->
+<!-- end-features -->
 
 
 ## Table of Contents

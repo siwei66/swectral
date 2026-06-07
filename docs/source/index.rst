@@ -1,14 +1,27 @@
 Swectral Documentation
 ======================
 
+Overview
+--------
+
 .. include:: ../../README.md
    :parser: myst_parser.sphinx_
-   :start-after: <!-- start-doc -->
-   :end-before: <!-- end-doc -->
+   :start-after: <!-- start-overview -->
+   :end-before: <!-- end-overview -->
+
+Core features
+-------------
+
+.. include:: ../../README.md
+   :parser: myst_parser.sphinx_
+   :start-after: <!-- start-features -->
+   :end-before: <!-- end-features -->
+
+Contents
+--------
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
 
    installation
    tutorial
