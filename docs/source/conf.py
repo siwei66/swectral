@@ -93,7 +93,8 @@ exclude_patterns = [
 linkcheck_ignore = [
     r'https://siwei66\.github\.io/.*',
     r'https://doi\.org/.*',
-    # r'https://docs\.scipy\.org/.*',
+    r'https://docs\.scipy\.org/.*',
+    r'https://docs\.pytorch\.org/.*',
 ]
 linkcheck_report_timeouts_as_broken = False
 
