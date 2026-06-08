@@ -103,12 +103,11 @@ linkcheck_report_timeouts_as_broken = False
 
 html_title = "Swectral"
 html_favicon = "_static/favicon.ico"
-html_logo = "_static/Logo_96x96.png"
+html_logo = "_static/Logo_96x96_with_text.png"
 
 html_theme = 'pydata_sphinx_theme'
 
 html_theme_options = {
-    "logo": {"text": "Swectral"},
     "show_nav_level": 2,
     "navigation_depth": 4,
     "collapse_navigation": True,

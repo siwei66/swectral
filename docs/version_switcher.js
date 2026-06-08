@@ -39,13 +39,28 @@ document.addEventListener("DOMContentLoaded", function () {
     })
     .then(response => response.json())
     .then(data => {
+
       // Extract the release versions, strictly filtering out 'master' 
       const versions = data
         .map(item => item.version)
         .filter(v => v !== "master");
 
+      // Sort versions in descending order cleanly (e.g., v0.6.5 -> v0.6.0 -> v0.5.0)
+      versions.sort((a, b) => {
+        const partsA = a.replace(/^v/, "").split(".").map(Number);
+        const partsB = b.replace(/^v/, "").split(".").map(Number);
+        for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+          const numA = partsA[i] || 0;
+          const numB = partsB[i] || 0;
+          if (numA !== numB) return numB - numA; // Descending order sort
+        }
+        return 0;
+      });
+      console.log("[Version Switcher] Sorted release versions manifest:", versions);
+
       // 4. Construct the Bootstrap dropdown container element
       const container = document.createElement("div");
+
       // Use 'd-inline-block' to gracefully stand side-by-side with the logo title text
       container.className = "version-switcher__container dropdown d-inline-block ms-3 align-self-center";
 
