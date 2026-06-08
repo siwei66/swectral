@@ -102,12 +102,13 @@ linkcheck_report_timeouts_as_broken = False
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_title = "Swectral"
-
+html_favicon = "_static/favicon.ico"
 html_logo = "_static/Logo_96x96.png"
 
 html_theme = 'pydata_sphinx_theme'
 
 html_theme_options = {
+    "logo": {"text": "Swectral"},
     "show_nav_level": 2,
     "navigation_depth": 4,
     "collapse_navigation": True,
@@ -125,7 +126,6 @@ html_css_files = [
     "index.css",
 ]
 html_show_sourcelink = False
-html_favicon = "_static/favicon.ico"
 
 # -- Intersphinx mapping -----------------------------------------------------
 # Provides automatic cross-references to external docs for these libraries
