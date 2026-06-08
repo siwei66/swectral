@@ -101,6 +101,10 @@ linkcheck_report_timeouts_as_broken = False
 # -- HTML output -------------------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
+html_title = "Swectral"
+
+html_logo = "_static/Logo_96x96.png"
+
 html_theme = 'pydata_sphinx_theme'
 
 html_theme_options = {

@@ -2,8 +2,6 @@
   <img src="https://raw.githubusercontent.com/siwei66/swectral/master/assets/docs/SpecPipeLogo.png" alt="SpecPipeLogo" width="150" height="150">
 </div>
 
-# Swectral
-
 [![Tests](https://github.com/siwei66/swectral/actions/workflows/tests.yml/badge.svg)](https://github.com/siwei66/swectral/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/siwei66/swectral/blob/master/LICENSE)
 [![PyPI version](https://img.shields.io/pypi/v/swectral.svg)](https://pypi.org/project/swectral/)

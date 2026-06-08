@@ -1,5 +1,5 @@
-Swectral Documentation
-======================
+Swectral
+========
 
 Overview
 --------
